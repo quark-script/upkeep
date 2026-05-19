@@ -33,9 +33,10 @@ function getLastSets(
 
   for (const s of sorted) {
     const ex = s.exercises.find(e => e.exerciseId === exerciseId)
-    if (ex && ex.sets.length > 0) {
-      const last = ex.sets[ex.sets.length - 1]
-      return { w: last.weight, r: last.reps }
+    const doneSets = ex?.sets.filter(st => st.done) ?? []
+    if (doneSets.length > 0) {
+      const top = doneSets.reduce((best, st) => st.weight > best.weight ? st : best)
+      return { w: top.weight, r: top.reps }
     }
   }
   return { w: 20, r: 10 }
@@ -466,7 +467,7 @@ export default function Workout() {
     const name = newExName.trim()
     if (!name) return
     const newEx: ExerciseEntry = {
-      id: `custom-${Date.now()}`,
+      id: crypto.randomUUID(),
       name,
       defaultSets: 3,
       defaultReps: '10–12',
@@ -492,14 +493,11 @@ export default function Workout() {
       type: workoutType,
       startedAt: startRef.current,
       finishedAt,
-      exercises: exercises.map((ex, i) => ({
-        exerciseId: ex.id,
-        sets: (log[i] || []).map(s => ({
-          weight: s.actW,
-          reps:   s.actR,
-          done:   s.done,
-        })),
-      })),
+      exercises: exercises.map((ex, i) => {
+        const sets = (log[i] || []).map(s => ({ weight: s.actW, reps: s.actR, done: s.done }))
+        const skipped = sets.length > 0 && sets.every(s => !s.done)
+        return { exerciseId: ex.id, sets, skipped }
+      }),
     }
     setSessions(prev => [...prev, session])
 

@@ -488,7 +488,7 @@ export default function Daily() {
       <ProteinChecklist todayKey={KEYS.proteinDay(todayStr)} />
       <SleepTracker todayKey={KEYS.sleepDay(todayStr)} />
       <p className="text-center font-mono text-[11px] text-text-faint uppercase tracking-[0.14em]">
-        Resets at midnight · IST
+        Resets at midnight · local time
       </p>
     </div>
   )

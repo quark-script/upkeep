@@ -151,7 +151,7 @@ export default function Today() {
           </h1>
         </div>
         <div className="w-[38px] h-[38px] rounded-pill bg-[var(--color-accent-soft)] border border-[var(--color-panel-border)] flex items-center justify-center font-mono text-[12px] text-accent font-semibold shrink-0">
-          VP
+          {profile?.name ? profile.name.slice(0, 2).toUpperCase() : 'GZ'}
         </div>
       </div>
 

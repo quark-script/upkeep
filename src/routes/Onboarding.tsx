@@ -142,9 +142,11 @@ function BaselineStep({ name, onDone }: { name: string; onDone: (m: MeasurementE
       </div>
 
       <div className="flex flex-col gap-2.5">
-        <Btn fullWidth onClick={() => onDone(buildEntry())}>
-          {buildEntry() ? 'Save & start tracking' : 'Skip for now'}
-        </Btn>
+        {(() => { const entry = buildEntry(); return (
+          <Btn fullWidth onClick={() => onDone(entry)}>
+            {entry ? 'Save & start tracking' : 'Skip for now'}
+          </Btn>
+        )})()}
         <button
           onClick={() => onDone(null)}
           className="w-full py-2.5 bg-transparent border-none font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] cursor-pointer"

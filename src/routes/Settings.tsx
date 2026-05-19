@@ -233,7 +233,7 @@ export default function Settings() {
             <RowItem
               icon={FileText}
               label={exported === 'csv' ? 'Downloaded!' : 'Export as CSV'}
-              sub="Two files — sessions and measurements"
+              sub="Four files — sessions, measurements, sleep, protein"
               onClick={handleExportCSV}
             />
           </Card>

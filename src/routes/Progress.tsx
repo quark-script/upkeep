@@ -3,7 +3,7 @@ import { format, subDays, eachDayOfInterval } from 'date-fns'
 import { X, BarChart2, Scale } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { SPLIT, BASELINE_MEASUREMENT } from '../lib/data'
+import { SPLIT } from '../lib/data'
 import type { Session, MeasurementEntry } from '../lib/types'
 import { Card, Stat, SectionLabel, PageTitle, Btn, Pill, Divider, EmptyState } from '../components/ui'
 
@@ -93,7 +93,7 @@ function Heatmap({ cells }: { cells: HeatmapCell[] }) {
           {weeks.map((wk, i) => {
             const c = wk[row]
             if (!c) return <div key={i} />
-            const opacity = c.state === 'hit' ? 0.55 + Math.random() * 0.45 : 1
+            const opacity = c.state === 'hit' ? 0.55 + ((c.date.getDate() * 7 + c.date.getMonth() * 13) % 100) / 100 * 0.45 : 1
             return (
               <div
                 key={i}
@@ -292,7 +292,7 @@ function LogModal({
 
 export default function Progress() {
   const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
-  const [measurements, setMeasurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [BASELINE_MEASUREMENT])
+  const [measurements, setMeasurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [showLog, setShowLog] = useState(false)
 
   const cells   = useMemo(() => buildHeatmap(sessions), [sessions])
