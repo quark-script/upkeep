@@ -19,31 +19,62 @@ function downloadFile(content: string, filename: string, mime: string) {
 }
 
 function sessionsToCSV(sessions: Session[]): string {
-  const rows: string[] = [
-    'date,type,duration_min,total_volume_kg,exercises',
-  ]
+  const rows = ['date,session_type,duration_min,exercise_id,set_number,weight_kg,reps,done']
   for (const s of sessions) {
     const dur = s.finishedAt ? Math.round((s.finishedAt - s.startedAt) / 60000) : ''
-    const vol = Math.round(
-      s.exercises.reduce(
-        (acc, ex) => acc + ex.sets.filter(st => st.done).reduce((a, st) => a + st.weight * st.reps, 0),
-        0
-      )
-    )
-    const exNames = s.exercises.map(e => e.exerciseId).join(';')
-    rows.push(`${s.date},${s.type},${dur},${vol},"${exNames}"`)
+    for (const ex of s.exercises) {
+      ex.sets.forEach((st, si) => {
+        rows.push(`${s.date},${s.type},${dur},${ex.exerciseId},${si + 1},${st.weight},${st.reps},${st.done}`)
+      })
+    }
   }
   return rows.join('\n')
 }
 
 function measurementsToCSV(ms: MeasurementEntry[]): string {
-  const rows: string[] = [
-    'date,weight,body_fat,muscle_mass,bmi,bmr,chest,shoulder,biceps,waist,thigh,calf',
-  ]
+  const rows = ['date,weight,body_fat,muscle_mass,bmi,bmr,neck,shoulder,chest,biceps,forearm,upper_abdomen,lower_abdomen,waist,hips,thigh,calf']
   for (const m of ms) {
-    const { chest, shoulder, biceps, waist, thigh, calf } = m.measurements
-    rows.push(`${m.date},${m.weight},${m.bodyFat},${m.muscleMass},${m.bmi},${m.bmr},${chest},${shoulder},${biceps},${waist},${thigh},${calf}`)
+    const t = m.measurements
+    rows.push(`${m.date},${m.weight},${m.bodyFat},${m.muscleMass},${m.bmi},${m.bmr},${t.neck},${t.shoulder},${t.chest},${t.biceps},${t.forearm},${t.upperAbdomen},${t.lowerAbdomen},${t.waist},${t.hips},${t.thigh},${t.calf}`)
   }
+  return rows.join('\n')
+}
+
+function sleepToCSV(): string {
+  const rows = ['date,phone_away,in_bed,awake,duration_h']
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('gainz:sleep:'))
+    .sort()
+    .forEach(k => {
+      try {
+        const date = k.replace('gainz:sleep:', '')
+        const e = JSON.parse(localStorage.getItem(k) ?? '{}')
+        let dur = ''
+        if (e.bed != null && e.awake != null) {
+          let a = e.awake < 12 ? e.awake + 24 : e.awake
+          let b = e.bed  < 12 ? e.bed  + 24 : e.bed
+          dur = (Math.round((a - b) * 10) / 10).toString()
+        }
+        rows.push(`${date},${e.phone ?? ''},${e.bed ?? ''},${e.awake ?? ''},${dur}`)
+      } catch {}
+    })
+  return rows.join('\n')
+}
+
+function proteinToCSV(): string {
+  const rows = ['date,item_id,checked']
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('gainz:protein:') && !k.endsWith(':custom'))
+    .sort()
+    .forEach(k => {
+      try {
+        const date = k.replace('gainz:protein:', '')
+        const items = JSON.parse(localStorage.getItem(k) ?? '{}') as Record<string, boolean>
+        Object.entries(items).forEach(([id, checked]) => {
+          rows.push(`${date},${id},${checked}`)
+        })
+      } catch {}
+    })
   return rows.join('\n')
 }
 
@@ -117,25 +148,47 @@ export default function Settings() {
   const firstDate        = sessions.length ? format(new Date(Math.min(...sessions.map(s => s.startedAt))), 'MMM yyyy') : null
 
   function handleExportJSON() {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      sessions,
-      measurements,
-    }
+    // Collect all gainz: keys from localStorage
+    const payload: Record<string, unknown> = { exportedAt: new Date().toISOString() }
+    const sleep:   Record<string, unknown> = {}
+    const protein: Record<string, unknown> = {}
+
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('gainz:'))
+      .forEach(k => {
+        try {
+          const val = JSON.parse(localStorage.getItem(k) ?? 'null')
+          if (k.startsWith('gainz:sleep:'))   sleep[k.replace('gainz:sleep:', '')]   = val
+          else if (k.startsWith('gainz:protein:') && !k.endsWith(':custom')) protein[k.replace('gainz:protein:', '')] = val
+          else if (k === KEYS.SESSIONS)        payload.sessions     = val
+          else if (k === KEYS.MEASUREMENTS)    payload.measurements = val
+          else if (k === KEYS.PROFILE)         payload.profile      = val
+          else if (k === KEYS.PROTEIN_CUSTOM)  payload.proteinCustom = val
+          else if (k === KEYS.SETTINGS)        payload.settings     = val
+        } catch {}
+      })
+
+    payload.sleep   = sleep
+    payload.protein = protein
+
     downloadFile(JSON.stringify(payload, null, 2), `gainz-export-${format(new Date(), 'yyyy-MM-dd')}.json`, 'application/json')
     setExported('json')
     setTimeout(() => setExported(null), 2000)
   }
 
   function handleExportCSV() {
-    const sCSV = sessionsToCSV(sessions)
-    const mCSV = measurementsToCSV(measurements)
-    downloadFile(sCSV, `gainz-sessions-${format(new Date(), 'yyyy-MM-dd')}.csv`, 'text/csv')
-    setTimeout(() => {
-      downloadFile(mCSV, `gainz-measurements-${format(new Date(), 'yyyy-MM-dd')}.csv`, 'text/csv')
-    }, 400)
+    const date = format(new Date(), 'yyyy-MM-dd')
+    const files = [
+      { name: `gainz-sessions-${date}.csv`,     content: sessionsToCSV(sessions)    },
+      { name: `gainz-measurements-${date}.csv`,  content: measurementsToCSV(measurements) },
+      { name: `gainz-sleep-${date}.csv`,          content: sleepToCSV()               },
+      { name: `gainz-protein-${date}.csv`,        content: proteinToCSV()             },
+    ]
+    files.forEach((f, i) => {
+      setTimeout(() => downloadFile(f.content, f.name, 'text/csv'), i * 350)
+    })
     setExported('csv')
-    setTimeout(() => setExported(null), 2000)
+    setTimeout(() => setExported(null), 2500)
   }
 
   function handleReset() {

@@ -405,7 +405,14 @@ function SleepTracker({ todayKey }: { todayKey: string }) {
       <div className="px-[18px] py-4">
         <div className="flex justify-between items-center mb-3">
           <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Tonight · cycle</p>
-          <p className="font-mono text-[9px] text-text-faint uppercase tracking-[0.06em]">tap when it happens</p>
+          {todaySleep.phone != null && (
+            <button
+              onClick={() => setTodaySleep({})}
+              className="font-mono text-[9px] text-text-faint uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer hover:text-warn transition-colors"
+            >
+              Reset
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-1.5 mb-3">
@@ -419,10 +426,28 @@ function SleepTracker({ todayKey }: { todayKey: string }) {
               <div
                 key={s.k}
                 className={[
-                  'px-2.5 py-2.5 rounded-card border transition-colors',
+                  'relative px-2.5 py-2.5 rounded-card border transition-colors',
                   on ? 'bg-[var(--color-accent-soft)] border-accent' : 'bg-panel-inset border-[var(--color-panel-border)]',
                 ].join(' ')}
               >
+                {on && (
+                  <button
+                    onClick={() => {
+                      // clear this stage and all later ones
+                      const cleared: SleepEntry = { ...todaySleep }
+                      if (s.k === 'phone') { delete cleared.phone; delete cleared.bed; delete cleared.awake }
+                      if (s.k === 'bed')   { delete cleared.bed;   delete cleared.awake }
+                      if (s.k === 'awake') { delete cleared.awake }
+                      setTodaySleep(cleared)
+                    }}
+                    className="absolute top-1.5 right-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-panel border border-[var(--color-panel-border)] cursor-pointer"
+                    title={`Reset ${s.label}`}
+                  >
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                      <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-text-faint" />
+                    </svg>
+                  </button>
+                )}
                 <p className={`font-mono text-[9px] uppercase tracking-[0.08em] font-semibold ${on ? 'text-accent' : 'text-text-dim'}`}>
                   {s.label}
                 </p>
