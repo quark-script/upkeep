@@ -180,6 +180,8 @@ function ExerciseCard({
   onUpdateSet,
   onLog,
   onUnlog,
+  onAddSet,
+  onSkip,
   stalled,
 }: {
   exercise: ExerciseEntry
@@ -190,6 +192,8 @@ function ExerciseCard({
   onUpdateSet: (i: number, s: LiveSet) => void
   onLog: (i: number) => void
   onUnlog: (i: number) => void
+  onAddSet: () => void
+  onSkip: () => void
   stalled: boolean
 }) {
   const completedCount = sets.filter(s => s.done).length
@@ -257,10 +261,16 @@ function ExerciseCard({
           ))}
 
           <div className="px-3.5 py-2.5 border-t border-[var(--color-divider)] flex justify-between items-center">
-            <button className="flex items-center gap-1.5 text-text-dim font-sans text-[11px] uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer">
+            <button
+              onClick={onAddSet}
+              className="flex items-center gap-1.5 text-text-dim font-sans text-[11px] uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer"
+            >
               <Plus size={12} strokeWidth={1.8} /> Add set
             </button>
-            <button className="text-text-faint font-sans text-[11px] uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer">
+            <button
+              onClick={onSkip}
+              className="text-text-faint font-sans text-[11px] uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer"
+            >
               Skip
             </button>
           </div>
@@ -422,6 +432,27 @@ export default function Workout() {
     }))
   }
 
+  const addSet = (exIdx: number) => {
+    setLog(prev => {
+      const existing = prev[exIdx] || []
+      const ref = existing[existing.length - 1] ?? { expW: 20, expR: 10, actW: 20, actR: 10, done: false }
+      return {
+        ...prev,
+        [exIdx]: [...existing, { done: false, expW: ref.actW, expR: ref.actR, actW: ref.actW, actR: ref.actR }],
+      }
+    })
+  }
+
+  const skipExercise = (exIdx: number) => {
+    setLog(prev => ({
+      ...prev,
+      [exIdx]: (prev[exIdx] || []).map(s => ({ ...s, done: false })),
+    }))
+    // collapse and advance
+    const nextEx = exercises.findIndex((_, i) => i > exIdx)
+    setActiveIdx(nextEx !== -1 ? nextEx : -1)
+  }
+
   const finishWorkout = () => {
     const finishedAt = Date.now()
     const session: Session = {
@@ -516,6 +547,8 @@ export default function Workout() {
             onUpdateSet={(si, ns) => updateSet(i, si, ns)}
             onLog={si => logSet(i, si)}
             onUnlog={si => unlogSet(i, si)}
+            onAddSet={() => addSet(i)}
+            onSkip={() => skipExercise(i)}
             stalled={isStalled(sessions, workoutType, ex.id)}
           />
         ))}
