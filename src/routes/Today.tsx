@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Moon, AlertTriangle, ArrowRight, Dumbbell } from 'lucide-react'
+import { Moon, AlertTriangle, ArrowRight, Dumbbell, X } from 'lucide-react'
 import {
   format, startOfWeek, eachDayOfInterval, endOfWeek,
   isSameDay, isAfter, isBefore, subDays,
@@ -81,6 +82,7 @@ export default function Today() {
   const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [profile]      = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
+  const [showChange, setShowChange] = useState(false)
 
   const today      = new Date()
   const todayStr   = format(today, 'yyyy-MM-dd')
@@ -88,8 +90,9 @@ export default function Today() {
 
   const [proteinToday] = useLocalStorage<Record<string, boolean>>(KEYS.proteinDay(todayStr), {})
   const [sleepLast]    = useLocalStorage<SleepEntry>(KEYS.sleepDay(ystdayStr), {})
+  const [dayOverride, setDayOverride] = useLocalStorage<WorkoutType | 'REST' | null>(KEYS.dayOverride(todayStr), null)
 
-  const dayType      = SPLIT[today.getDay()]
+  const dayType      = dayOverride ?? SPLIT[today.getDay()]
   const isRest       = dayType === 'REST'
   const workoutType  = isRest ? null : (dayType as WorkoutType)
 
@@ -177,6 +180,7 @@ export default function Today() {
             </button>
           )}
           <button
+            onClick={() => setShowChange(true)}
             className={`${isRest ? 'flex-1' : ''} px-[18px] py-3.5 bg-transparent text-text-dim font-sans text-[12px] font-medium uppercase tracking-[0.04em] border-none border-l border-[var(--color-divider)] cursor-pointer`}
           >
             Change
@@ -291,6 +295,40 @@ export default function Today() {
           </Pill>
         )}
       </Card>
+
+      {/* ── Day override modal ── */}
+      {showChange && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
+          <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setShowChange(false)} />
+          <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-t-[24px] md:rounded-card-lg shadow-card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-serif text-[18px] font-medium text-text tracking-[-0.02em]">Change today's session</p>
+              <button onClick={() => setShowChange(false)} className="w-7 h-7 flex items-center justify-center rounded-full bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer">
+                <X size={13} strokeWidth={2} className="text-text-dim" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {(['PUSH', 'PULL', 'LEGS', 'REST'] as const).map(type => (
+                <button
+                  key={type}
+                  onClick={() => { setDayOverride(type); setShowChange(false) }}
+                  className={`w-full px-4 py-3 rounded-card text-left font-sans text-[14px] font-medium border cursor-pointer transition-colors ${dayType === type ? 'bg-[var(--color-accent-soft)] border-accent text-accent' : 'bg-panel-inset border-[var(--color-panel-border)] text-text'}`}
+                >
+                  {type === 'REST' ? 'Rest day' : `${type} — ${type === 'PUSH' ? 'Chest · Shoulders · Triceps' : type === 'PULL' ? 'Back · Biceps · Traps' : 'Quads · Hamstrings · Calves'}`}
+                </button>
+              ))}
+              {dayOverride && (
+                <button
+                  onClick={() => { setDayOverride(null); setShowChange(false) }}
+                  className="w-full pt-2 text-center font-mono text-[11px] text-text-dim uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer"
+                >
+                  Reset to default ({SPLIT[today.getDay()]})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

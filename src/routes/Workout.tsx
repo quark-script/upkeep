@@ -5,11 +5,16 @@ import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { EXERCISES, SPLIT, COMPOUND_IDS } from '../lib/data'
 import type { Session, WorkoutType, LiveSet } from '../lib/types'
-import { Card, Pill, Btn, Divider } from '../components/ui'
+import { Card, Pill, Btn, Divider, EmptyState } from '../components/ui'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getTodayType(): WorkoutType | 'REST' {
+  const todayStr = new Date().toISOString().split('T')[0]
+  try {
+    const override = localStorage.getItem(KEYS.dayOverride(todayStr))
+    if (override) return JSON.parse(override) as WorkoutType | 'REST'
+  } catch {}
   return SPLIT[new Date().getDay()]
 }
 
@@ -366,7 +371,9 @@ export default function Workout() {
 
   const todayType = getTodayType()
   const workoutType: WorkoutType = todayType === 'REST' ? 'PUSH' : todayType
-  const exercises = getExercisesForDay(workoutType)
+  const baseExercises = getExercisesForDay(workoutType)
+  const [customExercises, setCustomExercises] = useState<ExerciseEntry[]>([])
+  const exercises = [...baseExercises, ...customExercises]
 
   const buildInitialLog = useCallback((): LiveLog => {
     const log: LiveLog = {}
@@ -387,6 +394,8 @@ export default function Workout() {
   const [activeIdx, setActiveIdx] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [summary, setSummary] = useState<SummaryData | null>(null)
+  const [showAddExercise, setShowAddExercise] = useState(false)
+  const [newExName, setNewExName] = useState('')
   const startRef = useRef(Date.now())
 
   useEffect(() => {
@@ -451,6 +460,28 @@ export default function Workout() {
     // collapse and advance
     const nextEx = exercises.findIndex((_, i) => i > exIdx)
     setActiveIdx(nextEx !== -1 ? nextEx : -1)
+  }
+
+  const handleAddExercise = () => {
+    const name = newExName.trim()
+    if (!name) return
+    const newEx: ExerciseEntry = {
+      id: `custom-${Date.now()}`,
+      name,
+      defaultSets: 3,
+      defaultReps: '10–12',
+      category: 'isolation',
+      day: [workoutType],
+    }
+    const newIdx = exercises.length
+    setCustomExercises(prev => [...prev, newEx])
+    setLog(prev => ({
+      ...prev,
+      [newIdx]: Array.from({ length: 3 }, () => ({ done: false, expW: 20, expR: 10, actW: 20, actR: 10 })),
+    }))
+    setActiveIdx(newIdx)
+    setNewExName('')
+    setShowAddExercise(false)
   }
 
   const finishWorkout = () => {
@@ -554,10 +585,32 @@ export default function Workout() {
         ))}
       </div>
 
-      {/* ── Add exercise (stub) ── */}
-      <button className="w-full py-3.5 rounded-card-lg bg-transparent border border-dashed border-[var(--color-panel-border)] text-text-dim font-sans text-xs uppercase tracking-[0.08em] font-medium flex items-center justify-center gap-2 cursor-pointer">
-        <Plus size={14} strokeWidth={1.8} /> Add exercise
-      </button>
+      {/* ── Add exercise ── */}
+      {showAddExercise ? (
+        <div className="bg-panel border border-accent rounded-card-lg p-4 flex flex-col gap-3">
+          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Exercise name</p>
+          <input
+            autoFocus
+            type="text"
+            value={newExName}
+            onChange={e => setNewExName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddExercise(); if (e.key === 'Escape') setShowAddExercise(false) }}
+            placeholder="e.g. Cable Fly"
+            className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3.5 py-3 font-sans text-[15px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
+          />
+          <div className="flex gap-2">
+            <Btn onClick={handleAddExercise} disabled={!newExName.trim()} className="flex-1">Add</Btn>
+            <Btn variant="secondary" onClick={() => { setShowAddExercise(false); setNewExName('') }} className="flex-1">Cancel</Btn>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowAddExercise(true)}
+          className="w-full py-3.5 rounded-card-lg bg-transparent border border-dashed border-[var(--color-panel-border)] text-text-dim font-sans text-xs uppercase tracking-[0.08em] font-medium flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Plus size={14} strokeWidth={1.8} /> Add exercise
+        </button>
+      )}
 
       {/* ── Finish ── */}
       <Btn fullWidth onClick={finishWorkout}>
