@@ -69,10 +69,10 @@ function Heatmap({ cells }: { cells: HeatmapCell[] }) {
   }, [weeks])
 
   const cols = weeks.length
-  const gridCols = `18px repeat(${cols}, 1fr)`
+  const gridCols = `14px repeat(${cols}, minmax(0, 1fr))`
 
   return (
-    <div>
+    <div className="overflow-hidden w-full">
       <div className="grid gap-[3px] mb-1" style={{ gridTemplateColumns: gridCols }}>
         <div />
         {weeks.map((_, i) => {
