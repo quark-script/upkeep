@@ -303,7 +303,7 @@ function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => voi
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-vault overflow-y-auto">
-      <div className="max-w-[720px] mx-auto w-full px-4 md:px-8 pt-12 pb-10 flex flex-col gap-6 min-h-full">
+      <div className="max-w-[720px] mx-auto w-full px-4 md:px-8 pt-12 pb-28 md:pb-10 flex flex-col gap-6 min-h-full">
         {/* Hero */}
         <div className="flex flex-col items-center text-center pt-4">
           <div className="w-16 h-16 rounded-[18px] bg-accent flex items-center justify-center mb-5 shadow-card">
@@ -570,7 +570,7 @@ export default function Workout() {
     <div className="pt-6 pb-8 flex flex-col gap-3.5">
       {/* ── Discard confirm modal ── */}
       {showDiscard && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 md:items-center">
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pt-4 pb-24 md:p-4 md:items-center">
           <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setShowDiscard(false)} />
           <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
             <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Discard session?</p>

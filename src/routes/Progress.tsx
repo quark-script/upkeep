@@ -280,7 +280,7 @@ function LogModal({
         </div>
 
         <Divider />
-        <div className="px-5 py-4 shrink-0">
+        <div className="px-5 pt-4 pb-8 md:py-4 shrink-0">
           <Btn fullWidth onClick={handleSave}>Save measurements</Btn>
         </div>
       </div>

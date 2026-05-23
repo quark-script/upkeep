@@ -143,7 +143,7 @@ export default function Today() {
     <div className="pt-6 pb-8 flex flex-col gap-4">
       {/* ── Delete session confirm ── */}
       {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 md:items-center">
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pt-4 pb-24 md:p-4 md:items-center">
           <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setDeleteId(null)} />
           <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
             <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Delete session?</p>
@@ -329,7 +329,7 @@ export default function Today() {
       {showChange && (
         <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
           <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setShowChange(false)} />
-          <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-t-[24px] md:rounded-card-lg shadow-card p-5">
+          <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-t-[24px] md:rounded-card-lg shadow-card p-5 pb-7 md:pb-5">
             <div className="flex items-center justify-between mb-4">
               <p className="font-serif text-[18px] font-medium text-text tracking-[-0.02em]">Change today's session</p>
               <button onClick={() => setShowChange(false)} className="w-7 h-7 flex items-center justify-center rounded-full bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer">
