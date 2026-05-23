@@ -397,6 +397,7 @@ export default function Workout() {
   const [summary, setSummary] = useState<SummaryData | null>(null)
   const [showAddExercise, setShowAddExercise] = useState(false)
   const [newExName, setNewExName] = useState('')
+  const [showDiscard, setShowDiscard] = useState(false)
   const startRef = useRef(Date.now())
 
   useEffect(() => {
@@ -533,6 +534,28 @@ export default function Workout() {
 
   return (
     <div className="pt-6 pb-8 flex flex-col gap-3.5">
+      {/* ── Discard confirm modal ── */}
+      {showDiscard && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 md:items-center">
+          <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setShowDiscard(false)} />
+          <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
+            <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Discard session?</p>
+            <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-6">
+              Nothing will be saved. This session won't appear in your history.
+            </p>
+            <div className="flex gap-3">
+              <Btn variant="secondary" onClick={() => setShowDiscard(false)} className="flex-1">Keep going</Btn>
+              <button
+                onClick={() => navigate('/today')}
+                className="flex-1 flex items-center justify-center gap-2 px-[18px] py-3.5 rounded-card bg-danger text-accent-text font-sans font-semibold text-[13px] uppercase tracking-[0.04em] border-none cursor-pointer transition-all active:scale-[0.98]"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="flex justify-between items-end">
         <div>
@@ -540,6 +563,12 @@ export default function Workout() {
           <h1 className="font-serif text-[30px] leading-[34px] text-text font-medium tracking-[-0.04em] mt-1 capitalize">
             {workoutType.toLowerCase()} day
           </h1>
+          <button
+            onClick={() => setShowDiscard(true)}
+            className="mt-1 bg-transparent border-none font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] cursor-pointer hover:text-danger transition-colors p-0"
+          >
+            Discard session
+          </button>
         </div>
         <div className="text-right">
           <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Elapsed</p>

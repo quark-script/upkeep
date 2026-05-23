@@ -79,7 +79,7 @@ function stalledCompound(sessions: Session[], type: WorkoutType) {
 
 export default function Today() {
   const navigate = useNavigate()
-  const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
+  const [sessions, setSessions] = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [profile]      = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
   const [showChange, setShowChange] = useState(false)
@@ -271,6 +271,13 @@ export default function Today() {
                       {Math.round(vol).toLocaleString()} KG VOL{dur ? ` · ${dur} MIN` : ''}
                     </p>
                   </div>
+                  <button
+                    onClick={() => setSessions(prev => prev.filter(ss => ss.id !== s.id))}
+                    className="ml-3 w-7 h-7 flex items-center justify-center rounded-card bg-transparent border-none cursor-pointer text-text-faint hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
+                    aria-label="Delete session"
+                  >
+                    <X size={13} strokeWidth={1.8} />
+                  </button>
                 </div>
               )
             })}

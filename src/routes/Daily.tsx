@@ -98,7 +98,17 @@ function ProteinChecklist({ todayKey }: { todayKey: string }) {
       <div className="px-[18px] pt-[18px] pb-3.5 flex items-center gap-4 border-b border-[var(--color-divider)]">
         <ProgressRing value={done} total={total} />
         <div className="flex-1">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Protein today</p>
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Protein today</p>
+            {done > 0 && (
+              <button
+                onClick={() => setChecked({})}
+                className="bg-transparent border-none font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] cursor-pointer hover:text-danger transition-colors p-0"
+              >
+                Reset
+              </button>
+            )}
+          </div>
           <p className="font-serif text-[24px] text-text font-medium tracking-[-0.03em] mt-1">
             {done === total && total > 0 ? 'All hit.' : `${total - done} to go.`}
           </p>
