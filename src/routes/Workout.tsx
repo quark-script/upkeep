@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { EXERCISES, SPLIT, COMPOUND_IDS } from '../lib/data'
+import { EXERCISES, SPLIT, COMPOUND_IDS, DAY_LABELS } from '../lib/data'
 import type { Session, WorkoutType, LiveSet } from '../lib/types'
 import { Card, Pill, Btn, Divider, EmptyState } from '../components/ui'
 
@@ -368,6 +368,8 @@ type LiveLog = Record<number, LiveSet[]>
 
 export default function Workout() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [started, setStarted] = useState(() => !!(location.state as { start?: boolean } | null)?.start)
   const [sessions, setSessions] = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
 
   const todayType = getTodayType()
@@ -398,14 +400,16 @@ export default function Workout() {
   const [showAddExercise, setShowAddExercise] = useState(false)
   const [newExName, setNewExName] = useState('')
   const [showDiscard, setShowDiscard] = useState(false)
-  const startRef = useRef(Date.now())
+  const startRef = useRef<number | null>(null)
 
   useEffect(() => {
+    if (!started) return
+    if (startRef.current === null) startRef.current = Date.now()
     const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+      setElapsed(Math.floor((Date.now() - startRef.current!) / 1000))
     }, 1000)
     return () => clearInterval(id)
-  }, [])
+  }, [started])
 
   const totalSets = exercises.reduce((a, e) => a + e.defaultSets, 0)
   const doneSets  = Object.values(log).reduce((a, arr) => a + arr.filter(s => s.done).length, 0)
@@ -492,7 +496,7 @@ export default function Workout() {
       id: crypto.randomUUID(),
       date: new Date().toISOString().split('T')[0],
       type: workoutType,
-      startedAt: startRef.current,
+      startedAt: startRef.current ?? finishedAt,
       finishedAt,
       exercises: exercises.map((ex, i) => {
         const sets = (log[i] || []).map(s => ({ weight: s.actW, reps: s.actR, done: s.done }))
@@ -519,7 +523,7 @@ export default function Workout() {
 
     setSummary({
       type: workoutType,
-      durationMin: Math.round((finishedAt - startRef.current) / 60000),
+      durationMin: Math.round((finishedAt - (startRef.current ?? finishedAt)) / 60000),
       volume: vol,
       doneSets,
       totalSets,
@@ -530,6 +534,36 @@ export default function Workout() {
 
   if (summary) {
     return <SummaryOverlay data={summary} onDone={() => navigate('/today')} />
+  }
+
+  if (!started) {
+    return (
+      <div className="pt-6 pb-8 flex flex-col gap-4">
+        <div>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.14em]">Ready</p>
+          <h1 className="font-serif text-[30px] leading-[34px] text-text font-medium tracking-[-0.04em] mt-1 capitalize">
+            {workoutType.toLowerCase()} day
+          </h1>
+        </div>
+        <Card>
+          <p className="font-sans text-[14px] text-text-dim leading-[22px]">
+            {DAY_LABELS[workoutType]}
+          </p>
+          <p className="font-mono text-[11px] text-text-faint mt-2 tracking-[0.04em]">
+            {getExercisesForDay(workoutType).length} exercises · tap Begin when you're ready
+          </p>
+        </Card>
+        <Btn fullWidth onClick={() => setStarted(true)}>
+          Begin workout <ArrowRight size={16} strokeWidth={1.6} />
+        </Btn>
+        <button
+          onClick={() => navigate('/today')}
+          className="w-full py-2.5 bg-transparent border-none font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] cursor-pointer"
+        >
+          Back
+        </button>
+      </div>
+    )
   }
 
   return (

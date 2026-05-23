@@ -24,7 +24,7 @@ export default function App() {
       <div className="flex h-full overflow-hidden bg-vault text-text">
         <Sidebar />
 
-        <main className="flex-1 overflow-y-auto pb-28 md:pb-0">
+        <main className="flex-1 overflow-y-auto pb-36 md:pb-0">
           <div className="max-w-[720px] mx-auto px-4 md:px-8">
             <Routes>
               <Route path="/" element={<Navigate to="/today" replace />} />

@@ -9,7 +9,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { SPLIT, DAY_LABELS, COMPOUND_IDS, EXERCISES } from '../lib/data'
 import type { Session, MeasurementEntry, SleepEntry, WorkoutType, Profile } from '../lib/types'
-import { Card, Pill, Stat, SectionLabel, Divider, EmptyState } from '../components/ui'
+import { Card, Pill, Stat, SectionLabel, Divider, EmptyState, Btn } from '../components/ui'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,7 @@ export default function Today() {
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [profile]      = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
   const [showChange, setShowChange] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const today      = new Date()
   const todayStr   = format(today, 'yyyy-MM-dd')
@@ -140,6 +141,27 @@ export default function Today() {
 
   return (
     <div className="pt-6 pb-8 flex flex-col gap-4">
+      {/* ── Delete session confirm ── */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 md:items-center">
+          <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setDeleteId(null)} />
+          <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
+            <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Delete session?</p>
+            <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-6">
+              This session will be permanently removed from your history.
+            </p>
+            <div className="flex gap-3">
+              <Btn variant="secondary" onClick={() => setDeleteId(null)} className="flex-1">Cancel</Btn>
+              <button
+                onClick={() => { setSessions(prev => prev.filter(s => s.id !== deleteId)); setDeleteId(null) }}
+                className="flex-1 flex items-center justify-center px-[18px] py-3.5 rounded-card bg-danger text-accent-text font-sans font-semibold text-[13px] uppercase tracking-[0.04em] border-none cursor-pointer transition-all active:scale-[0.98]"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ── Greeting ── */}
       <div className="flex justify-between items-end">
         <div>
@@ -173,7 +195,7 @@ export default function Today() {
         <div className="flex">
           {!isRest && (
             <button
-              onClick={() => navigate('/workout')}
+              onClick={() => navigate('/workout', { state: { start: true } })}
               className="flex-1 py-3.5 px-4 bg-accent text-accent-text font-sans text-[13px] font-semibold uppercase tracking-[0.06em] flex items-center justify-center gap-2 border-none cursor-pointer"
             >
               Start workout <ArrowRight size={14} strokeWidth={2} />
@@ -272,7 +294,7 @@ export default function Today() {
                     </p>
                   </div>
                   <button
-                    onClick={() => setSessions(prev => prev.filter(ss => ss.id !== s.id))}
+                    onClick={() => setDeleteId(s.id)}
                     className="ml-3 w-7 h-7 flex items-center justify-center rounded-card bg-transparent border-none cursor-pointer text-text-faint hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
                     aria-label="Delete session"
                   >
