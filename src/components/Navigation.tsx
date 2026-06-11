@@ -27,21 +27,32 @@ export function BottomBar() {
             to={to}
             className={({ isActive }) =>
               [
-                'flex flex-col items-center gap-0.5 px-4 py-2 rounded-pill transition-colors',
+                'flex flex-col items-center gap-0.5 px-2.5 py-2 rounded-pill transition-colors',
                 isActive ? 'bg-accent text-accent-text' : 'text-text-dim',
               ].join(' ')
             }
           >
-            <Icon size={20} strokeWidth={1.6} />
-            <span className="font-sans text-[10px] uppercase tracking-[0.04em] font-semibold">{label}</span>
+            <Icon size={19} strokeWidth={1.6} />
+            <span className="font-sans text-[9px] uppercase tracking-[0.03em] font-semibold">{label}</span>
           </NavLink>
         ))}
-        {/* Settings — icon only to save space */}
+        {/* History + Settings — icon only to save space */}
+        <NavLink
+          to="/history"
+          className={({ isActive }) =>
+            [
+              'flex flex-col items-center gap-0.5 px-2 py-2 rounded-pill transition-colors',
+              isActive ? 'bg-accent text-accent-text' : 'text-text-dim',
+            ].join(' ')
+          }
+        >
+          <History size={20} strokeWidth={1.6} />
+        </NavLink>
         <NavLink
           to="/settings"
           className={({ isActive }) =>
             [
-              'flex flex-col items-center gap-0.5 px-3 py-2 rounded-pill transition-colors',
+              'flex flex-col items-center gap-0.5 px-2 py-2 rounded-pill transition-colors',
               isActive ? 'bg-accent text-accent-text' : 'text-text-dim',
             ].join(' ')
           }
