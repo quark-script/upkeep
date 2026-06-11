@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Moon, AlertTriangle, ArrowRight, Dumbbell, X, History as HistoryIcon } from 'lucide-react'
+import { Moon, AlertTriangle, ArrowRight, Dumbbell, X, History as HistoryIcon, Settings } from 'lucide-react'
 import {
   format, startOfWeek, eachDayOfInterval, endOfWeek,
   isSameDay, isAfter, isBefore, subDays,
@@ -176,9 +176,16 @@ export default function Today() {
             {greeting()},<br />{profile?.name ?? 'there'}.
           </h1>
         </div>
-        <div className="w-[38px] h-[38px] rounded-pill bg-[var(--color-accent-soft)] border border-[var(--color-panel-border)] flex items-center justify-center font-mono text-[12px] text-accent font-semibold shrink-0">
+        <button
+          onClick={() => navigate('/settings')}
+          aria-label="Settings"
+          className="relative w-[38px] h-[38px] rounded-pill bg-[var(--color-accent-soft)] border border-[var(--color-panel-border)] flex items-center justify-center font-mono text-[12px] text-accent font-semibold shrink-0 cursor-pointer transition-transform active:scale-95"
+        >
           {profile?.name ? profile.name.slice(0, 2).toUpperCase() : 'GZ'}
-        </div>
+          <span className="absolute -bottom-0.5 -right-0.5 w-[15px] h-[15px] rounded-full bg-panel border border-[var(--color-panel-border)] flex items-center justify-center">
+            <Settings size={9} strokeWidth={2} className="text-text-dim" />
+          </span>
+        </button>
       </div>
 
       {/* ── Today's session hero ── */}

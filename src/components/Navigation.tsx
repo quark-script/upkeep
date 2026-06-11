@@ -1,27 +1,26 @@
 import { NavLink } from 'react-router-dom'
 import { Sun, Dumbbell, TrendingUp, CheckSquare, History, Settings } from 'lucide-react'
 
-const PRIMARY_TABS = [
+// Primary surfaces — shown in the mobile bottom bar (5 = clean max).
+const TABS = [
   { to: '/today',    label: 'Today',    Icon: Sun },
   { to: '/workout',  label: 'Workout',  Icon: Dumbbell },
-  { to: '/progress', label: 'Progress', Icon: TrendingUp },
   { to: '/daily',    label: 'Daily',    Icon: CheckSquare },
+  { to: '/progress', label: 'Progress', Icon: TrendingUp },
+  { to: '/history',  label: 'History',  Icon: History },
 ]
 
-const ALL_TABS = [
-  ...PRIMARY_TABS,
-  { to: '/history',  label: 'History',  Icon: History },
-  { to: '/settings', label: 'Settings', Icon: Settings },
-]
+// Desktop sidebar also surfaces Settings (mobile reaches it via the profile avatar).
+const SIDEBAR_TABS = [...TABS, { to: '/settings', label: 'Settings', Icon: Settings }]
 
 export function BottomBar() {
   return (
     <nav className="md:hidden fixed bottom-[18px] left-3 right-3 z-50">
       <div
         className="bg-panel border border-[var(--color-panel-border)] rounded-pill
-                   flex items-center justify-around px-2 py-1.5 shadow-card"
+                   flex items-center justify-around px-1.5 py-1.5 shadow-card"
       >
-        {PRIMARY_TABS.map(({ to, label, Icon }) => (
+        {TABS.map(({ to, label, Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -33,32 +32,9 @@ export function BottomBar() {
             }
           >
             <Icon size={19} strokeWidth={1.6} />
-            <span className="font-sans text-[9px] uppercase tracking-[0.03em] font-semibold">{label}</span>
+            <span className="font-sans text-[9.5px] uppercase tracking-[0.03em] font-semibold">{label}</span>
           </NavLink>
         ))}
-        {/* History + Settings — icon only to save space */}
-        <NavLink
-          to="/history"
-          className={({ isActive }) =>
-            [
-              'flex flex-col items-center gap-0.5 px-2 py-2 rounded-pill transition-colors',
-              isActive ? 'bg-accent text-accent-text' : 'text-text-dim',
-            ].join(' ')
-          }
-        >
-          <History size={20} strokeWidth={1.6} />
-        </NavLink>
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            [
-              'flex flex-col items-center gap-0.5 px-2 py-2 rounded-pill transition-colors',
-              isActive ? 'bg-accent text-accent-text' : 'text-text-dim',
-            ].join(' ')
-          }
-        >
-          <Settings size={20} strokeWidth={1.6} />
-        </NavLink>
       </div>
     </nav>
   )
@@ -80,7 +56,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex flex-col gap-1 flex-1">
-        {ALL_TABS.map(({ to, label, Icon }) => (
+        {SIDEBAR_TABS.map(({ to, label, Icon }) => (
           <NavLink
             key={to}
             to={to}
