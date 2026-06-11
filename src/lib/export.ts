@@ -188,23 +188,28 @@ function e1rm(weight: number, reps: number): number {
   return weight * (1 + reps / 30)
 }
 
-// PRs (all-time est-1RM bests) that were set within [startKey, endKey].
+// PRs set within [startKey, endKey] — a lift's est-1RM beating its own prior
+// best. A lift's first-ever appearance is a baseline, not a PR.
 function weeklyPRs(all: Session[], startKey: string, endKey: string): { name: string; value: number; date: string }[] {
   const finished = all.filter(s => s.finishedAt !== null).sort((a, b) => a.startedAt - b.startedAt)
-  const best: Record<string, { value: number; date: string; name: string }> = {}
+  const best: Record<string, number> = {}
+  const events: { name: string; value: number; date: string }[] = []
   for (const s of finished) {
     for (const ex of s.exercises) {
       const done = ex.sets.filter(st => st.done)
       if (done.length === 0) continue
       const v = Math.max(...done.map(st => e1rm(st.weight, st.reps)))
-      if (!best[ex.exerciseId] || v > best[ex.exerciseId].value + 0.5) {
-        best[ex.exerciseId] = { value: v, date: s.date, name: exerciseName(ex) }
+      const prev = best[ex.exerciseId]
+      if (prev == null) { best[ex.exerciseId] = v; continue }
+      if (v > prev + 0.5) {
+        best[ex.exerciseId] = v
+        if (s.date >= startKey && s.date <= endKey) {
+          events.push({ name: exerciseName(ex), value: v, date: s.date })
+        }
       }
     }
   }
-  return Object.values(best)
-    .filter(b => b.date >= startKey && b.date <= endKey)
-    .sort((a, b) => b.value - a.value)
+  return events.sort((a, b) => b.value - a.value)
 }
 
 export function buildWeeklyDigest(): string {
