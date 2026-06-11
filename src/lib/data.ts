@@ -3,15 +3,20 @@ import type { Exercise, ProteinItem, DayType } from './types'
 export const EXERCISES: Exercise[] = [
   // PUSH
   { id: 'bench-press',     name: 'Flat Barbell Bench Press',   defaultSets: 4, defaultReps: '8–10',    category: 'compound',  day: ['PUSH'] },
+  { id: 'incline-bb',      name: 'Incline Barbell Bench Press', defaultSets: 3, defaultReps: '8–10',   category: 'compound',  day: ['PUSH'], optional: true },
   { id: 'incline-db',      name: 'Incline Dumbbell Press',     defaultSets: 3, defaultReps: '10–12',   category: 'isolation', day: ['PUSH'] },
+  { id: 'decline-bb',      name: 'Decline Barbell Press',      defaultSets: 3, defaultReps: '8–10',    category: 'compound',  day: ['PUSH'], optional: true },
   { id: 'ohp',             name: 'Overhead Press (Standing)',  defaultSets: 3, defaultReps: '8–10',    category: 'compound',  day: ['PUSH'] },
   { id: 'lateral-raise',   name: 'Lateral Raises',             defaultSets: 3, defaultReps: '12–15',   category: 'isolation', day: ['PUSH'] },
   { id: 'tricep-pushdown', name: 'Tricep Rope Pushdown',       defaultSets: 3, defaultReps: '12–15',   category: 'isolation', day: ['PUSH'] },
-  { id: 'dips',            name: 'Dips / Close-Grip Pushups',  defaultSets: 2, defaultReps: '8–12',    category: 'isolation', day: ['PUSH'] },
+  { id: 'dips',            name: 'Dips',                       defaultSets: 2, defaultReps: '8–12',    category: 'isolation', day: ['PUSH'] },
+  { id: 'pushups',         name: 'Push-Ups',                   defaultSets: 2, defaultReps: '12–20',   category: 'isolation', day: ['PUSH'], optional: true },
   // PULL
   { id: 'deadlift',        name: 'Conventional Deadlift',      defaultSets: 4, defaultReps: '6–8',     category: 'compound',  day: ['PULL'] },
   { id: 'tbar-row',        name: 'T-Bar Row',                  defaultSets: 3, defaultReps: '10–12',   category: 'isolation', day: ['PULL'] },
   { id: 'lat-pulldown',    name: 'Lat Pulldown',               defaultSets: 3, defaultReps: '10–12',   category: 'isolation', day: ['PULL'] },
+  { id: 'assisted-pullup', name: 'Assisted Pull-Ups',          defaultSets: 3, defaultReps: '8–12',    category: 'compound',  day: ['PULL'] },
+  { id: 'pullup',          name: 'Pull-Ups',                   defaultSets: 3, defaultReps: '6–10',    category: 'compound',  day: ['PULL'], optional: true },
   { id: 'face-pulls',      name: 'Face Pulls',                 defaultSets: 3, defaultReps: '15–20',   category: 'isolation', day: ['PULL'] },
   { id: 'shrugs',          name: 'Shrugs',                     defaultSets: 3, defaultReps: '12–15',   category: 'isolation', day: ['PULL'] },
   { id: 'bicep-curl',      name: 'Barbell Bicep Curl',         defaultSets: 3, defaultReps: '10–12',   category: 'isolation', day: ['PULL'] },
@@ -29,7 +34,7 @@ export const EXERCISES: Exercise[] = [
 ]
 
 export const PROTEIN_ITEMS: ProteinItem[] = [
-  { id: 'eggs',        label: '3 Eggs at breakfast',    time: '7:30 AM' },
+  { id: 'eggs',        label: '2 Eggs at breakfast',    time: '7:30 AM' },
   { id: 'whey',        label: 'Whey protein shake',     time: '9:00 AM' },
   { id: 'chana',       label: 'Roasted chana + nuts',   time: '11:00 AM' },
   { id: 'pb-sandwich', label: 'PB sandwich',            time: '5:00 PM' },
@@ -50,7 +55,7 @@ export const SPLIT: Record<number, DayType> = {
 
 export const DAY_LABELS: Record<Exclude<DayType, 'REST'>, string> = {
   PUSH: 'Chest · Shoulders · Triceps · 6 lifts',
-  PULL: 'Back · Biceps · Traps · 8 lifts',
+  PULL: 'Back · Biceps · Traps · 9 lifts',
   LEGS: 'Quads · Hamstrings · Calves · 8 lifts',
 }
 

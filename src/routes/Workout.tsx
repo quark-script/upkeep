@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { format } from 'date-fns'
-import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight, Pencil } from 'lucide-react'
+import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight, Pencil, Search, X, StickyNote } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { EXERCISES, SPLIT, COMPOUND_IDS, DAY_LABELS } from '../lib/data'
@@ -25,8 +25,16 @@ function getTypeForDate(dateStr: string): WorkoutType {
   return t === 'REST' ? 'PUSH' : t
 }
 
+// Default per-day session — excludes optional (picker-only) lifts.
 function getExercisesForDay(type: WorkoutType) {
-  return EXERCISES.filter(e => e.day.includes(type))
+  return EXERCISES.filter(e => e.day.includes(type) && !e.optional)
+}
+
+// Full library for the picker: this day's lifts first, then everything else.
+function libraryForDay(type: WorkoutType): Exercise[] {
+  const day = EXERCISES.filter(e => e.day.includes(type))
+  const others = EXERCISES.filter(e => !e.day.includes(type))
+  return [...day, ...others]
 }
 
 function getLastSets(
@@ -201,6 +209,8 @@ function ExerciseCard({
   onAddSet,
   onSkip,
   stalled,
+  note,
+  onNote,
 }: {
   exercise: Exercise
   idx: number
@@ -213,6 +223,8 @@ function ExerciseCard({
   onAddSet: () => void
   onSkip: () => void
   stalled: boolean
+  note: string
+  onNote: (v: string) => void
 }) {
   const completedCount = sets.filter(s => s.done).length
   const allDone = sets.length > 0 && completedCount === sets.length
@@ -245,6 +257,7 @@ function ExerciseCard({
             </span>
             {stalled && <Pill color="warn">STALLED · 3</Pill>}
             {pr && <Pill color="accent">NEW PR</Pill>}
+            {note.trim() && <Pill color="dim">NOTE</Pill>}
           </div>
           <div className="flex items-center gap-3 mt-1 font-mono text-[11px] text-text-dim tracking-[0.04em]">
             <span>{exercise.defaultSets} × {exercise.defaultReps}</span>
@@ -291,6 +304,16 @@ function ExerciseCard({
             >
               Skip
             </button>
+          </div>
+
+          <div className="px-3.5 py-2.5 border-t border-[var(--color-divider)] flex items-center gap-2">
+            <StickyNote size={13} strokeWidth={1.7} className="text-text-faint shrink-0" />
+            <input
+              value={note}
+              onChange={e => onNote(e.target.value)}
+              placeholder="Note for this exercise…"
+              className="flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[13px] text-text placeholder:text-text-faint"
+            />
           </div>
         </div>
       )}
@@ -381,8 +404,10 @@ function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => voi
 
 interface InitState {
   type: WorkoutType
-  customExercises: Exercise[]
+  added: Exercise[]              // exercises beyond the day defaults (library-optional or custom)
   log: LiveLog
+  note: string
+  notes: Record<string, string>
   activeId: string | null
   startedAt: number | null
   editingId: string | null
@@ -398,8 +423,10 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
       if (d && d.log) {
         return {
           type: d.type,
-          customExercises: d.customExercises ?? [],
+          added: d.customExercises ?? [],
           log: d.log,
+          note: d.note ?? '',
+          notes: d.notes ?? {},
           activeId: d.activeId ?? null,
           startedAt: d.startedAt ?? null,
           editingId: d.editingId ?? null,
@@ -414,27 +441,33 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
     const existing = sessions.find(s => s.date === date && s.finishedAt !== null)
     if (existing) {
       const type = existing.type
-      const base = getExercisesForDay(type)
-      const custom: Exercise[] = existing.exercises
-        .filter(el => !EXERCISES.some(x => x.id === el.exerciseId))
-        .map(el => ({
-          id: el.exerciseId,
-          name: 'Custom exercise',
-          defaultSets: el.sets.length,
-          defaultReps: '—',
-          category: 'isolation' as const,
-          day: [type],
-        }))
+      const defaults = getExercisesForDay(type)
       const log: LiveLog = {}
+      const notes: Record<string, string> = {}
+      const added: Exercise[] = []
       existing.exercises.forEach(el => {
         log[el.exerciseId] = el.sets.map(s => ({
           done: s.done, expW: s.weight, expR: s.reps, actW: s.weight, actR: s.reps,
         }))
+        if (el.note) notes[el.exerciseId] = el.note
+        // Anything not a default day lift is an "added" exercise (library-optional or custom).
+        if (!defaults.some(d => d.id === el.exerciseId)) {
+          const lib = EXERCISES.find(x => x.id === el.exerciseId)
+          added.push(lib ?? {
+            id: el.exerciseId,
+            name: el.name ?? 'Custom exercise',
+            defaultSets: el.sets.length || 3,
+            defaultReps: '—',
+            category: 'isolation' as const,
+            day: [type], optional: true,
+          })
+        }
       })
-      base.forEach(ex => { if (!log[ex.id]) log[ex.id] = defaultSetsFor(ex, sessions, type) })
-      const ordered = [...base, ...custom]
+      defaults.forEach(ex => { if (!log[ex.id]) log[ex.id] = defaultSetsFor(ex, sessions, type) })
+      const ordered = [...defaults, ...added]
       return {
-        type, customExercises: custom, log,
+        type, added, log, notes,
+        note: existing.note ?? '',
         activeId: ordered[0]?.id ?? null,
         startedAt: existing.startedAt,
         editingId: existing.id,
@@ -449,7 +482,7 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
   const log: LiveLog = {}
   exercises.forEach(ex => { log[ex.id] = defaultSetsFor(ex, sessions, type) })
   return {
-    type, customExercises: [], log,
+    type, added: [], log, note: '', notes: {},
     activeId: exercises[0]?.id ?? null,
     startedAt: null, editingId: null,
     started: !isToday,   // manual entry needs no Begin gate
@@ -468,8 +501,10 @@ function WorkoutForDate({ date }: { date: string }) {
   const init = useRef<InitState>(loadInitial(date, isToday, sessions)).current
 
   const [type, setType] = useState<WorkoutType>(init.type)
-  const [customExercises, setCustomExercises] = useState<Exercise[]>(init.customExercises)
+  const [added, setAdded] = useState<Exercise[]>(init.added)
   const [log, setLog] = useState<LiveLog>(init.log)
+  const [note, setNote] = useState(init.note)
+  const [notes, setNotes] = useState<Record<string, string>>(init.notes)
   const [activeId, setActiveId] = useState<string | null>(init.activeId)
   const [editingId, setEditingId] = useState<string | null>(init.editingId)
   const [started, setStarted] = useState(
@@ -477,12 +512,15 @@ function WorkoutForDate({ date }: { date: string }) {
   )
   const [elapsed, setElapsed] = useState(0)
   const [summary, setSummary] = useState<SummaryData | null>(null)
-  const [showAddExercise, setShowAddExercise] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [addingCustom, setAddingCustom] = useState(false)
   const [newExName, setNewExName] = useState('')
+  const [showNote, setShowNote] = useState(!!init.note)
   const [showDiscard, setShowDiscard] = useState(false)
   const startRef = useRef<number | null>(init.startedAt)
 
-  const exercises = [...getExercisesForDay(type), ...customExercises]
+  const exercises = [...getExercisesForDay(type), ...added]
 
   // Timer (live only)
   useEffect(() => {
@@ -500,7 +538,7 @@ function WorkoutForDate({ date }: { date: string }) {
     const draft: WorkoutDraft = {
       date, type, mode,
       startedAt: startRef.current,
-      customExercises, log, activeId, editingId,
+      customExercises: added, log, note, notes, activeId, editingId,
       updatedAt: Date.now(),
     }
     try {
@@ -508,7 +546,7 @@ function WorkoutForDate({ date }: { date: string }) {
     } catch (err) {
       console.warn('failed to persist workout draft', err)
     }
-  }, [started, date, type, mode, customExercises, log, activeId, editingId])
+  }, [started, date, type, mode, added, log, note, notes, activeId, editingId])
 
   const clearDraft = () => {
     try { localStorage.removeItem(KEYS.workoutDraft(date)) } catch {}
@@ -556,22 +594,33 @@ function WorkoutForDate({ date }: { date: string }) {
     setActiveId(next ? next.id : null)
   }
 
-  const handleAddExercise = () => {
+  const closePicker = () => {
+    setShowPicker(false); setPickerSearch(''); setAddingCustom(false); setNewExName('')
+  }
+
+  const addFromLibrary = (ex: Exercise) => {
+    if (exercises.some(e => e.id === ex.id)) { setActiveId(ex.id); closePicker(); return }
+    setAdded(prev => [...prev, ex])
+    setLog(prev => ({ ...prev, [ex.id]: defaultSetsFor(ex, sessions, type) }))
+    setActiveId(ex.id)
+    closePicker()
+  }
+
+  const handleAddCustom = () => {
     const name = newExName.trim()
     if (!name) return
     const newEx: Exercise = {
       id: crypto.randomUUID(), name,
       defaultSets: 3, defaultReps: '10–12',
-      category: 'isolation', day: [type],
+      category: 'isolation', day: [type], optional: true,
     }
-    setCustomExercises(prev => [...prev, newEx])
+    setAdded(prev => [...prev, newEx])
     setLog(prev => ({
       ...prev,
       [newEx.id]: Array.from({ length: 3 }, () => ({ done: false, expW: 20, expR: 10, actW: 20, actR: 10 })),
     }))
     setActiveId(newEx.id)
-    setNewExName('')
-    setShowAddExercise(false)
+    closePicker()
   }
 
   // Switch workout type for a manual entry — rebuilds the exercise list fresh.
@@ -581,8 +630,9 @@ function WorkoutForDate({ date }: { date: string }) {
     const nl: LiveLog = {}
     ex.forEach(e => { nl[e.id] = defaultSetsFor(e, sessions, next) })
     setType(next)
-    setCustomExercises([])
+    setAdded([])
     setLog(nl)
+    setNotes({})
     setActiveId(ex[0]?.id ?? null)
     setEditingId(null)
   }
@@ -596,10 +646,11 @@ function WorkoutForDate({ date }: { date: string }) {
 
     const session: Session = {
       id, date, type, startedAt, finishedAt,
+      note: note.trim() || undefined,
       exercises: exercises.map(ex => {
         const sets = (log[ex.id] || []).map(s => ({ weight: s.actW, reps: s.actR, done: s.done }))
         const skipped = sets.length > 0 && sets.every(s => !s.done)
-        return { exerciseId: ex.id, sets, skipped }
+        return { exerciseId: ex.id, name: ex.name, sets, skipped, note: notes[ex.id]?.trim() || undefined }
       }),
     }
 
@@ -629,7 +680,7 @@ function WorkoutForDate({ date }: { date: string }) {
       exerciseLines,
       manual: mode === 'manual',
     })
-  }, [date, type, mode, editingId, exercises, log, volume, doneSets, totalSets, setSessions])
+  }, [date, type, mode, editingId, exercises, log, note, notes, volume, doneSets, totalSets, setSessions])
 
   if (summary) {
     return <SummaryOverlay data={summary} onDone={() => navigate('/today')} />
@@ -689,6 +740,87 @@ function WorkoutForDate({ date }: { date: string }) {
                 Discard
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Exercise picker ── */}
+      {showPicker && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
+          <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={closePicker} />
+          <div className="relative w-full max-w-md bg-panel border border-[var(--color-panel-border)] rounded-t-[24px] md:rounded-card-lg shadow-card flex flex-col max-h-[78vh] mb-0">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <p className="font-serif text-[18px] font-medium text-text tracking-[-0.02em]">Add exercise</p>
+              <button onClick={closePicker} className="w-7 h-7 flex items-center justify-center rounded-full bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer">
+                <X size={13} strokeWidth={2} className="text-text-dim" />
+              </button>
+            </div>
+
+            {addingCustom ? (
+              <div className="px-5 pb-6 flex flex-col gap-3">
+                <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Custom exercise name</p>
+                <input
+                  autoFocus
+                  value={newExName}
+                  onChange={e => setNewExName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddCustom(); if (e.key === 'Escape') setAddingCustom(false) }}
+                  placeholder="e.g. Cable Fly"
+                  className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3.5 py-3 font-sans text-[15px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
+                />
+                <div className="flex gap-2">
+                  <Btn onClick={handleAddCustom} disabled={!newExName.trim()} className="flex-1">Add</Btn>
+                  <Btn variant="secondary" onClick={() => { setAddingCustom(false); setNewExName('') }} className="flex-1">Back</Btn>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="px-5 pb-3">
+                  <div className="flex items-center gap-2 bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3 py-2.5">
+                    <Search size={15} strokeWidth={1.8} className="text-text-faint shrink-0" />
+                    <input
+                      autoFocus
+                      value={pickerSearch}
+                      onChange={e => setPickerSearch(e.target.value)}
+                      placeholder="Search exercises…"
+                      className="flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] text-text placeholder:text-text-faint"
+                    />
+                  </div>
+                </div>
+
+                <div className="overflow-y-auto px-3 pb-3 flex-1">
+                  {(() => {
+                    const q = pickerSearch.trim().toLowerCase()
+                    const present = new Set(exercises.map(e => e.id))
+                    const list = libraryForDay(type).filter(e => !present.has(e.id) && (!q || e.name.toLowerCase().includes(q)))
+                    if (list.length === 0) {
+                      return <p className="text-center font-sans text-[13px] text-text-dim py-8">No matches. Try a custom exercise below.</p>
+                    }
+                    return list.map(ex => {
+                      const onDay = ex.day.includes(type)
+                      return (
+                        <button
+                          key={ex.id}
+                          onClick={() => addFromLibrary(ex)}
+                          className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-card text-left bg-transparent border-none cursor-pointer hover:bg-panel-inset transition-colors"
+                        >
+                          <Plus size={14} strokeWidth={2} className="text-text-faint shrink-0" />
+                          <span className="flex-1 min-w-0 font-sans text-[14px] text-text font-medium truncate">{ex.name}</span>
+                          {!onDay && <Pill color="dim">{ex.day[0]}</Pill>}
+                          <span className="font-mono text-[10px] text-text-dim tracking-[0.04em] shrink-0">{ex.defaultReps}</span>
+                        </button>
+                      )
+                    })
+                  })()}
+                </div>
+
+                <button
+                  onClick={() => { setAddingCustom(true); setNewExName(pickerSearch) }}
+                  className="flex items-center justify-center gap-2 px-5 py-4 border-t border-[var(--color-divider)] bg-transparent border-x-0 border-b-0 font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] font-medium cursor-pointer"
+                >
+                  <Plus size={13} strokeWidth={1.8} /> Custom exercise
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -771,34 +903,40 @@ function WorkoutForDate({ date }: { date: string }) {
             onAddSet={() => addSet(ex.id)}
             onSkip={() => skipExercise(ex.id)}
             stalled={isStalled(sessions, type, ex.id)}
+            note={notes[ex.id] ?? ''}
+            onNote={v => setNotes(prev => ({ ...prev, [ex.id]: v }))}
           />
         ))}
       </div>
 
-      {/* ── Add exercise ── */}
-      {showAddExercise ? (
-        <div className="bg-panel border border-accent rounded-card-lg p-4 flex flex-col gap-3">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Exercise name</p>
-          <input
-            autoFocus
-            type="text"
-            value={newExName}
-            onChange={e => setNewExName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleAddExercise(); if (e.key === 'Escape') setShowAddExercise(false) }}
-            placeholder="e.g. Cable Fly"
-            className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3.5 py-3 font-sans text-[15px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
+      {/* ── Add exercise (picker) ── */}
+      <button
+        onClick={() => setShowPicker(true)}
+        className="w-full py-3.5 rounded-card-lg bg-transparent border border-dashed border-[var(--color-panel-border)] text-text-dim font-sans text-xs uppercase tracking-[0.08em] font-medium flex items-center justify-center gap-2 cursor-pointer"
+      >
+        <Plus size={14} strokeWidth={1.8} /> Add exercise
+      </button>
+
+      {/* ── Workout note ── */}
+      {showNote ? (
+        <div className="bg-panel border border-[var(--color-panel-border)] rounded-card-lg p-4 flex flex-col gap-2">
+          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] flex items-center gap-1.5">
+            <StickyNote size={12} strokeWidth={1.7} /> Workout note
+          </p>
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            rows={2}
+            placeholder="e.g. Felt strong today. Trainer: please check my squat depth."
+            className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3 py-2.5 font-sans text-[14px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors resize-none"
           />
-          <div className="flex gap-2">
-            <Btn onClick={handleAddExercise} disabled={!newExName.trim()} className="flex-1">Add</Btn>
-            <Btn variant="secondary" onClick={() => { setShowAddExercise(false); setNewExName('') }} className="flex-1">Cancel</Btn>
-          </div>
         </div>
       ) : (
         <button
-          onClick={() => setShowAddExercise(true)}
-          className="w-full py-3.5 rounded-card-lg bg-transparent border border-dashed border-[var(--color-panel-border)] text-text-dim font-sans text-xs uppercase tracking-[0.08em] font-medium flex items-center justify-center gap-2 cursor-pointer"
+          onClick={() => setShowNote(true)}
+          className="w-full py-2.5 bg-transparent border-none font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] cursor-pointer flex items-center justify-center gap-1.5"
         >
-          <Plus size={14} strokeWidth={1.8} /> Add exercise
+          <StickyNote size={13} strokeWidth={1.7} /> Add workout note
         </button>
       )}
 

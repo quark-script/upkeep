@@ -9,8 +9,10 @@ export interface SetEntry {
 
 export interface ExerciseLog {
   exerciseId: string
+  name?: string       // human name captured at log time (survives export & custom lifts)
   sets: SetEntry[]
   skipped?: boolean
+  note?: string       // per-exercise note / instruction
 }
 
 export interface Session {
@@ -20,6 +22,7 @@ export interface Session {
   startedAt: number   // epoch ms
   finishedAt: number | null
   exercises: ExerciseLog[]
+  note?: string       // workout-level note / instruction
 }
 
 export interface Exercise {
@@ -29,6 +32,7 @@ export interface Exercise {
   defaultReps: string
   category: 'compound' | 'isolation'
   day: WorkoutType[]
+  optional?: boolean  // not in the default day session; available via the picker
 }
 
 export interface MeasurementEntry {
@@ -96,6 +100,8 @@ export interface WorkoutDraft {
   startedAt: number | null     // epoch ms for live sessions; null for manual
   customExercises: Exercise[]  // ad-hoc exercises added this session
   log: LiveLog
+  note?: string                // workout-level note
+  notes?: Record<string, string>  // per-exercise notes, keyed by exerciseId
   activeId: string | null      // currently expanded exercise
   editingId: string | null     // id of an existing Session being edited, if any
   updatedAt: number
