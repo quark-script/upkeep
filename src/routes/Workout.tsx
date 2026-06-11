@@ -57,10 +57,28 @@ function getLastSets(
   return { w: 20, r: 10 }
 }
 
+// Seed a fresh exercise with a progressive-overload suggestion: if every set
+// was completed last time, pre-fill the next target a small step heavier.
 function defaultSetsFor(ex: Exercise, sessions: Session[], type: WorkoutType): LiveSet[] {
-  const last = getLastSets(sessions, type, ex.id)
+  const sorted = sessions
+    .filter(s => s.type === type && s.finishedAt !== null)
+    .sort((a, b) => b.startedAt - a.startedAt)
+
+  for (const s of sorted) {
+    const el = s.exercises.find(e => e.exerciseId === ex.id)
+    const done = el?.sets.filter(st => st.done) ?? []
+    if (done.length > 0) {
+      const top = done.reduce((best, st) => (st.weight > best.weight ? st : best))
+      const allDone = el!.sets.length > 0 && el!.sets.every(st => st.done)
+      const inc = ex.category === 'compound' ? 2.5 : 1.25
+      const targetW = allDone ? top.weight + inc : top.weight
+      return Array.from({ length: ex.defaultSets }, () => ({
+        done: false, expW: top.weight, expR: top.reps, actW: targetW, actR: top.reps,
+      }))
+    }
+  }
   return Array.from({ length: ex.defaultSets }, () => ({
-    done: false, expW: last.w, expR: last.r, actW: last.w, actR: last.r,
+    done: false, expW: 20, expR: 10, actW: 20, actR: 10,
   }))
 }
 
@@ -91,6 +109,8 @@ function fmtElapsed(seconds: number): string {
   const s = seconds % 60
   return `${m}:${String(s).padStart(2, '0')}`
 }
+
+const REST_DEFAULT = 90  // seconds
 
 // ─── NumField ─────────────────────────────────────────────────────────────────
 
@@ -231,6 +251,8 @@ function ExerciseCard({
   const pr = sets.some(s => s.done && s.actW > s.expW)
   const lastW = sets[0]?.expW ?? '–'
   const lastR = sets[0]?.expR ?? '–'
+  const targetUp = completedCount === 0 && !!sets[0] && sets[0].actW > sets[0].expW
+  const targetInc = targetUp ? +(sets[0].actW - sets[0].expW).toFixed(2) : 0
 
   return (
     <div
@@ -257,6 +279,7 @@ function ExerciseCard({
             </span>
             {stalled && <Pill color="warn">STALLED · 3</Pill>}
             {pr && <Pill color="accent">NEW PR</Pill>}
+            {targetUp && <Pill color="success">TARGET +{targetInc}KG</Pill>}
             {note.trim() && <Pill color="dim">NOTE</Pill>}
           </div>
           <div className="flex items-center gap-3 mt-1 font-mono text-[11px] text-text-dim tracking-[0.04em]">
@@ -518,6 +541,8 @@ function WorkoutForDate({ date }: { date: string }) {
   const [newExName, setNewExName] = useState('')
   const [showNote, setShowNote] = useState(!!init.note)
   const [showDiscard, setShowDiscard] = useState(false)
+  const [restEnd, setRestEnd] = useState<number | null>(null)
+  const [restRemaining, setRestRemaining] = useState(0)
   const startRef = useRef<number | null>(init.startedAt)
 
   const exercises = [...getExercisesForDay(type), ...added]
@@ -552,6 +577,22 @@ function WorkoutForDate({ date }: { date: string }) {
     try { localStorage.removeItem(KEYS.workoutDraft(date)) } catch {}
   }
 
+  // Rest countdown — starts when a set is logged in a live session.
+  useEffect(() => {
+    if (restEnd == null) return
+    const tick = () => {
+      const rem = Math.round((restEnd - Date.now()) / 1000)
+      setRestRemaining(rem)
+      if (rem <= 0) { navigator.vibrate?.(40); setRestEnd(null) }
+    }
+    tick()
+    const id = setInterval(tick, 250)
+    return () => clearInterval(id)
+  }, [restEnd])
+
+  const addRest = (delta: number) =>
+    setRestEnd(e => Math.max(Date.now(), (e ?? Date.now()) + delta * 1000))
+
   const totalSets = exercises.reduce((a, e) => a + (log[e.id]?.length ?? e.defaultSets), 0)
   const doneSets  = exercises.reduce((a, e) => a + (log[e.id]?.filter(s => s.done).length ?? 0), 0)
   const volume    = exercises.reduce(
@@ -566,6 +607,7 @@ function WorkoutForDate({ date }: { date: string }) {
   const logSet = (id: string, setIdx: number) => {
     setLog(prev => ({ ...prev, [id]: prev[id].map((s, i) => (i === setIdx ? { ...s, done: true } : s)) }))
     navigator.vibrate?.(15)
+    if (mode === 'live') setRestEnd(Date.now() + REST_DEFAULT * 1000)
     const currentSets = log[id] || []
     const allDoneAfter = currentSets.every((s, i) => i === setIdx || s.done)
     if (allDoneAfter) {
@@ -938,6 +980,31 @@ function WorkoutForDate({ date }: { date: string }) {
         >
           <StickyNote size={13} strokeWidth={1.7} /> Add workout note
         </button>
+      )}
+
+      {/* ── Rest timer (floating) ── */}
+      {restEnd != null && (
+        <div className="fixed left-0 right-0 bottom-[92px] md:bottom-6 z-40 flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto bg-panel border border-accent rounded-pill shadow-card flex items-center gap-2 pl-4 pr-2 py-1.5">
+            <Clock size={14} strokeWidth={1.8} className="text-accent" />
+            <span className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Rest</span>
+            <span className="font-mono text-[20px] text-text font-medium tabular-nums w-[52px] text-center">
+              {fmtElapsed(Math.max(0, restRemaining))}
+            </span>
+            <button
+              onClick={() => addRest(-15)}
+              className="font-mono text-[11px] text-text-dim px-2 py-1.5 bg-transparent border-none cursor-pointer"
+            >−15</button>
+            <button
+              onClick={() => setRestEnd(null)}
+              className="font-mono text-[11px] text-accent-text font-semibold uppercase tracking-[0.04em] px-3 py-1.5 rounded-pill bg-accent border-none cursor-pointer"
+            >Skip</button>
+            <button
+              onClick={() => addRest(15)}
+              className="font-mono text-[11px] text-text-dim px-2 py-1.5 bg-transparent border-none cursor-pointer"
+            >+15</button>
+          </div>
+        </div>
       )}
 
       {/* ── Finish / Save ── */}

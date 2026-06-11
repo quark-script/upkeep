@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Download, Trash2, Info, ChevronRight, FileJson, FileText } from 'lucide-react'
+import { Download, Trash2, Info, ChevronRight, FileJson, FileText, ClipboardList } from 'lucide-react'
 import { format } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { PageTitle, Card, Divider, Btn } from '../components/ui'
-import { reportToJSON, sessionsToCSV, measurementsToCSV, sleepToCSV, proteinToCSV } from '../lib/export'
+import { reportToJSON, sessionsToCSV, measurementsToCSV, sleepToCSV, proteinToCSV, buildWeeklyDigest } from '../lib/export'
 import type { Session, MeasurementEntry } from '../lib/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -83,6 +83,18 @@ export default function Settings() {
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [showReset, setShowReset] = useState(false)
   const [exported, setExported]   = useState<'json' | 'csv' | null>(null)
+  const [digestDone, setDigestDone] = useState(false)
+
+  async function handleDigest() {
+    const text = buildWeeklyDigest()
+    try {
+      await navigator.clipboard.writeText(text)
+      setDigestDone(true)
+      setTimeout(() => setDigestDone(false), 2000)
+    } catch {
+      downloadFile(text, `gainz-digest-${format(new Date(), 'yyyy-MM-dd')}.md`, 'text/markdown')
+    }
+  }
 
   const sessionCount     = sessions.filter(s => s.finishedAt).length
   const measurementCount = measurements.length
@@ -135,6 +147,19 @@ export default function Settings() {
               <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em] mt-1">{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* ── Share ── */}
+        <div>
+          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">Share</p>
+          <Card noPad>
+            <RowItem
+              icon={ClipboardList}
+              label={digestDone ? 'Copied to clipboard!' : 'Copy weekly digest'}
+              sub="Last 7 days — for your human or AI trainer"
+              onClick={handleDigest}
+            />
+          </Card>
         </div>
 
         {/* ── Export ── */}

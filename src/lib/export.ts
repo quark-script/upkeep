@@ -1,5 +1,7 @@
+import { format, subDays } from 'date-fns'
 import { EXERCISES, PROTEIN_ITEMS } from './data'
 import { KEYS } from './storage'
+import { dateKey, parseKey } from './date'
 import type { Session, ExerciseLog, MeasurementEntry, Profile, ProteinItem, SleepEntry } from './types'
 
 // ─── Name / label resolution ────────────────────────────────────────────────
@@ -178,6 +180,114 @@ export function sleepToCSV(): string {
     rows.push(csvRow([date, value.phone ?? '', value.bed ?? '', value.awake ?? '', sleepDuration(value) ?? '']))
   })
   return rows.join('\n')
+}
+
+// ─── Weekly digest (plain markdown for a human or AI trainer) ────────────────
+
+function e1rm(weight: number, reps: number): number {
+  return weight * (1 + reps / 30)
+}
+
+// PRs (all-time est-1RM bests) that were set within [startKey, endKey].
+function weeklyPRs(all: Session[], startKey: string, endKey: string): { name: string; value: number; date: string }[] {
+  const finished = all.filter(s => s.finishedAt !== null).sort((a, b) => a.startedAt - b.startedAt)
+  const best: Record<string, { value: number; date: string; name: string }> = {}
+  for (const s of finished) {
+    for (const ex of s.exercises) {
+      const done = ex.sets.filter(st => st.done)
+      if (done.length === 0) continue
+      const v = Math.max(...done.map(st => e1rm(st.weight, st.reps)))
+      if (!best[ex.exerciseId] || v > best[ex.exerciseId].value + 0.5) {
+        best[ex.exerciseId] = { value: v, date: s.date, name: exerciseName(ex) }
+      }
+    }
+  }
+  return Object.values(best)
+    .filter(b => b.date >= startKey && b.date <= endKey)
+    .sort((a, b) => b.value - a.value)
+}
+
+export function buildWeeklyDigest(): string {
+  const today = new Date()
+  const startKey = dateKey(subDays(today, 6))
+  const endKey = dateKey(today)
+  const inWin = (d: string) => d >= startKey && d <= endKey
+
+  const allSessions = JSON.parse(localStorage.getItem(KEYS.SESSIONS) ?? '[]') as Session[]
+  const sessions = allSessions
+    .filter(s => s.finishedAt !== null && inWin(s.date))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const profile = JSON.parse(localStorage.getItem(KEYS.PROFILE) ?? 'null') as Profile | null
+
+  const L: string[] = []
+  L.push('# GainZ — Weekly Digest')
+  L.push(`**${format(parseKey(startKey), 'MMM d')} – ${format(parseKey(endKey), 'MMM d, yyyy')}**`)
+  if (profile?.name) L.push(`Lifter: ${profile.name}`)
+  L.push('')
+
+  // Training
+  const totalVol = sessions.reduce((a, s) => a + sessionVolume(s), 0)
+  L.push(`## Training — ${sessions.length} session${sessions.length === 1 ? '' : 's'} · ${Math.round(totalVol).toLocaleString()} kg total`)
+  if (sessions.length === 0) L.push('_No workouts logged this week._')
+  for (const s of sessions) {
+    const dur = s.finishedAt ? Math.round((s.finishedAt - s.startedAt) / 60000) : null
+    L.push(`- **${format(parseKey(s.date), 'EEE MMM d')} · ${s.type}** — ${Math.round(sessionVolume(s)).toLocaleString()} kg${dur ? `, ${dur} min` : ''}`)
+    if (s.note) L.push(`  - note: ${s.note}`)
+    for (const ex of s.exercises) {
+      const done = ex.sets.filter(st => st.done)
+      if (done.length === 0) continue
+      const top = done.reduce((b, st) => (st.weight > b.weight ? st : b))
+      L.push(`  - ${exerciseName(ex)}: ${done.length} sets, top ${top.weight} kg × ${top.reps}${ex.note ? ` — ${ex.note}` : ''}`)
+    }
+  }
+  L.push('')
+
+  // PRs
+  const prs = weeklyPRs(allSessions, startKey, endKey)
+  if (prs.length > 0) {
+    L.push('## New PRs (est. 1RM)')
+    prs.forEach(p => L.push(`- ${p.name}: **${Math.round(p.value)} kg** (${format(parseKey(p.date), 'MMM d')})`))
+    L.push('')
+  }
+
+  // Nutrition adherence
+  const proteinTotal = PROTEIN_ITEMS.length +
+    (JSON.parse(localStorage.getItem(KEYS.PROTEIN_CUSTOM) ?? '[]') as ProteinItem[]).length
+  const proteinDays = readDayKeys<Record<string, boolean>>('gainz:protein:', k => k.endsWith(':custom'))
+    .filter(({ date }) => inWin(date))
+  if (proteinDays.length > 0) {
+    const avgHit = proteinDays.reduce((a, { value }) => a + Object.values(value).filter(Boolean).length, 0) / proteinDays.length
+    L.push(`## Nutrition — protein adherence ${Math.round((avgHit / proteinTotal) * 100)}% (${avgHit.toFixed(1)}/${proteinTotal} items/day avg)`)
+    L.push('')
+  }
+
+  // Sleep
+  const sleepDays = readDayKeys<SleepEntry>('gainz:sleep:')
+    .filter(({ date }) => inWin(date))
+    .map(({ value }) => sleepDuration(value))
+    .filter((d): d is number => d != null)
+  if (sleepDays.length > 0) {
+    const avg = sleepDays.reduce((a, d) => a + d, 0) / sleepDays.length
+    L.push(`## Sleep — ${avg.toFixed(1)} h average over ${sleepDays.length} night${sleepDays.length === 1 ? '' : 's'}`)
+    L.push('')
+  }
+
+  // Body
+  const ms = (JSON.parse(localStorage.getItem(KEYS.MEASUREMENTS) ?? '[]') as MeasurementEntry[])
+    .sort((a, b) => a.date.localeCompare(b.date))
+  if (ms.length > 0) {
+    const latest = ms.at(-1)!
+    const prev = ms.length > 1 ? ms[ms.length - 2] : null
+    const d = (cur: number, was?: number) => (was == null ? '' : ` (${cur - was >= 0 ? '+' : ''}${(cur - was).toFixed(1)})`)
+    L.push('## Body — latest measurement ' + format(parseKey(latest.date), 'MMM d'))
+    L.push(`- Weight: ${latest.weight} kg${d(latest.weight, prev?.weight)}`)
+    L.push(`- Body fat: ${latest.bodyFat}%${d(latest.bodyFat, prev?.bodyFat)}`)
+    L.push(`- Muscle: ${latest.muscleMass} kg${d(latest.muscleMass, prev?.muscleMass)}`)
+    L.push('')
+  }
+
+  L.push('_Generated by GainZ._')
+  return L.join('\n')
 }
 
 export function proteinToCSV(): string {
