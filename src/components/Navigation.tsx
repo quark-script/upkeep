@@ -15,7 +15,7 @@ const SIDEBAR_TABS = [...TABS, { to: '/settings', label: 'Settings', Icon: Setti
 
 export function BottomBar() {
   return (
-    <nav className="md:hidden fixed bottom-[18px] left-3 right-3 z-50">
+    <nav className="md:hidden fixed bottom-[18px] left-3 right-3 z-40">
       <div
         className="bg-panel border border-[var(--color-panel-border)] rounded-pill
                    flex items-center justify-around px-1.5 py-1.5 shadow-card"

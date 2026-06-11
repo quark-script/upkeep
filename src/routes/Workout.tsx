@@ -544,6 +544,9 @@ function WorkoutForDate({ date }: { date: string }) {
   const [restEnd, setRestEnd] = useState<number | null>(null)
   const [restRemaining, setRestRemaining] = useState(0)
   const startRef = useRef<number | null>(init.startedAt)
+  // Per-type stash so switching workout type (manual entry) doesn't lose what
+  // you already filled — switch back and it's restored.
+  const typeStash = useRef<Partial<Record<WorkoutType, { log: LiveLog; added: Exercise[]; notes: Record<string, string>; activeId: string | null }>>>({})
 
   const exercises = [...getExercisesForDay(type), ...added]
 
@@ -665,17 +668,29 @@ function WorkoutForDate({ date }: { date: string }) {
     closePicker()
   }
 
-  // Switch workout type for a manual entry — rebuilds the exercise list fresh.
+  // Switch workout type for a manual entry. Non-destructive: the current type's
+  // entries are stashed and restored if you switch back.
   const changeType = (next: WorkoutType) => {
+    if (next === type) return
+    typeStash.current[type] = { log, added, notes, activeId }
     try { localStorage.setItem(KEYS.dayOverride(date), JSON.stringify(next)) } catch {}
-    const ex = getExercisesForDay(next)
-    const nl: LiveLog = {}
-    ex.forEach(e => { nl[e.id] = defaultSetsFor(e, sessions, next) })
+
+    const stash = typeStash.current[next]
+    if (stash) {
+      setLog(stash.log)
+      setAdded(stash.added)
+      setNotes(stash.notes)
+      setActiveId(stash.activeId)
+    } else {
+      const ex = getExercisesForDay(next)
+      const nl: LiveLog = {}
+      ex.forEach(e => { nl[e.id] = defaultSetsFor(e, sessions, next) })
+      setLog(nl)
+      setAdded([])
+      setNotes({})
+      setActiveId(ex[0]?.id ?? null)
+    }
     setType(next)
-    setAdded([])
-    setLog(nl)
-    setNotes({})
-    setActiveId(ex[0]?.id ?? null)
     setEditingId(null)
   }
 
@@ -857,7 +872,7 @@ function WorkoutForDate({ date }: { date: string }) {
 
                 <button
                   onClick={() => { setAddingCustom(true); setNewExName(pickerSearch) }}
-                  className="flex items-center justify-center gap-2 px-5 py-4 border-t border-[var(--color-divider)] bg-transparent border-x-0 border-b-0 font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] font-medium cursor-pointer"
+                  className="flex items-center justify-center gap-2 px-5 pt-4 pb-7 border-t border-[var(--color-divider)] bg-transparent border-x-0 border-b-0 font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] font-medium cursor-pointer"
                 >
                   <Plus size={13} strokeWidth={1.8} /> Custom exercise
                 </button>
