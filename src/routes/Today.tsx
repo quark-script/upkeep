@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Moon, AlertTriangle, ArrowRight, Dumbbell, X } from 'lucide-react'
+import { Moon, AlertTriangle, ArrowRight, Dumbbell, X, History as HistoryIcon } from 'lucide-react'
 import {
   format, startOfWeek, eachDayOfInterval, endOfWeek,
   isSameDay, isAfter, isBefore, subDays,
 } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
+import { todayKey } from '../lib/date'
 import { SPLIT, DAY_LABELS, COMPOUND_IDS, EXERCISES } from '../lib/data'
 import type { Session, MeasurementEntry, SleepEntry, WorkoutType, Profile } from '../lib/types'
 import { Card, Pill, Stat, SectionLabel, Divider, EmptyState, Btn } from '../components/ui'
@@ -84,6 +85,9 @@ export default function Today() {
   const [profile]      = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
   const [showChange, setShowChange] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [hasTodayDraft] = useState(() => {
+    try { return !!localStorage.getItem(KEYS.workoutDraft(todayKey())) } catch { return false }
+  })
 
   const today      = new Date()
   const todayStr   = format(today, 'yyyy-MM-dd')
@@ -195,10 +199,10 @@ export default function Today() {
         <div className="flex">
           {!isRest && (
             <button
-              onClick={() => navigate('/workout', { state: { start: true } })}
+              onClick={() => navigate('/workout', hasTodayDraft ? undefined : { state: { start: true } })}
               className="flex-1 py-3.5 px-4 bg-accent text-accent-text font-sans text-[13px] font-semibold uppercase tracking-[0.06em] flex items-center justify-center gap-2 border-none cursor-pointer"
             >
-              Start workout <ArrowRight size={14} strokeWidth={2} />
+              {hasTodayDraft ? 'Resume workout' : 'Start workout'} <ArrowRight size={14} strokeWidth={2} />
             </button>
           )}
           <button
@@ -306,6 +310,14 @@ export default function Today() {
           </Card>
         </div>
       )}
+
+      {/* ── View history ── */}
+      <button
+        onClick={() => navigate('/history')}
+        className="flex items-center justify-center gap-2 py-2.5 bg-transparent border-none font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] font-medium cursor-pointer hover:text-text transition-colors"
+      >
+        <HistoryIcon size={13} strokeWidth={1.8} /> View past days
+      </button>
 
       {/* ── Sleep last night ── */}
       <Card className="flex items-center gap-3.5">

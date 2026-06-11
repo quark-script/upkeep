@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Sun, Dumbbell, TrendingUp, CheckSquare, Settings } from 'lucide-react'
+import { Sun, Dumbbell, TrendingUp, CheckSquare, History, Settings } from 'lucide-react'
 
 const PRIMARY_TABS = [
   { to: '/today',    label: 'Today',    Icon: Sun },
@@ -10,6 +10,7 @@ const PRIMARY_TABS = [
 
 const ALL_TABS = [
   ...PRIMARY_TABS,
+  { to: '/history',  label: 'History',  Icon: History },
   { to: '/settings', label: 'Settings', Icon: Settings },
 ]
 

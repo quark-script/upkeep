@@ -5,10 +5,12 @@ import Today from './routes/Today'
 import Workout from './routes/Workout'
 import Progress from './routes/Progress'
 import Daily from './routes/Daily'
+import History from './routes/History'
 import Settings from './routes/Settings'
 import Onboarding from './routes/Onboarding'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { KEYS } from './lib/storage'
+import { LogDateProvider } from './lib/dateContext'
 import type { Profile } from './lib/types'
 
 export default function App() {
@@ -18,7 +20,7 @@ export default function App() {
   const showOnboarding = !profile && !boarded
 
   return (
-    <>
+    <LogDateProvider>
       {showOnboarding && <Onboarding onComplete={() => setBoarded(true)} />}
 
       <div className="flex h-full overflow-hidden bg-vault text-text">
@@ -32,6 +34,7 @@ export default function App() {
               <Route path="/workout"  element={<Workout />} />
               <Route path="/progress" element={<Progress />} />
               <Route path="/daily"    element={<Daily />} />
+              <Route path="/history"  element={<History />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </div>
@@ -39,6 +42,6 @@ export default function App() {
 
         <BottomBar />
       </div>
-    </>
+    </LogDateProvider>
   )
 }

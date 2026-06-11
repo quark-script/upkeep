@@ -83,3 +83,20 @@ export interface LiveSet {
   actW: number  // actual weight (user input)
   actR: number  // actual reps
 }
+
+// In-progress workout log, keyed by exerciseId (robust across list changes).
+export type LiveLog = Record<string, LiveSet[]>
+
+// A workout in progress (live today) or being entered/edited (past day),
+// auto-saved to localStorage so a reload never loses logged sets.
+export interface WorkoutDraft {
+  date: string                 // yyyy-MM-dd (matches the storage key)
+  type: WorkoutType
+  mode: 'live' | 'manual'      // live = today w/ timer; manual = past-day entry
+  startedAt: number | null     // epoch ms for live sessions; null for manual
+  customExercises: Exercise[]  // ad-hoc exercises added this session
+  log: LiveLog
+  activeId: string | null      // currently expanded exercise
+  editingId: string | null     // id of an existing Session being edited, if any
+  updatedAt: number
+}

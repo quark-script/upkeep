@@ -5,7 +5,8 @@ export const KEYS = {
   SETTINGS: 'gainz:settings',
   MEASUREMENTS: 'gainz:measurements',
   PROTEIN_CUSTOM: 'gainz:protein:custom',
-  proteinDay: (date: string) => `gainz:protein:${date}`,
-  sleepDay:   (date: string) => `gainz:sleep:${date}`,
-  dayOverride:(date: string) => `gainz:day-override:${date}`,
+  proteinDay:   (date: string) => `gainz:protein:${date}`,
+  sleepDay:     (date: string) => `gainz:sleep:${date}`,
+  dayOverride:  (date: string) => `gainz:day-override:${date}`,
+  workoutDraft: (date: string) => `gainz:workout-draft:${date}`,
 } as const

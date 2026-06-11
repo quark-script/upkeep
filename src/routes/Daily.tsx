@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Moon } from 'lucide-react'
+import { Plus, Moon, Clock } from 'lucide-react'
 import { format, subDays, eachDayOfInterval } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { PROTEIN_ITEMS } from '../lib/data'
+import { useLogDate } from '../lib/dateContext'
+import { parseKey } from '../lib/date'
 import type { ProteinItem, SleepEntry } from '../lib/types'
 import { Card, PageTitle, Divider } from '../components/ui'
+import { DateStrip } from '../components/DateStrip'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -16,6 +19,25 @@ function fmtTime(h: number | undefined | null): string {
   const ampm = hh < 12 ? 'AM' : 'PM'
   const disp = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh
   return `${disp}:${String(mm).padStart(2, '0')} ${ampm}`
+}
+
+// 24h float (e.g. 22.5) ↔ "HH:MM" string for <input type="time">
+function floatToHHMM(v: number): string {
+  let hh = Math.floor(v) % 24
+  let mm = Math.round((v - Math.floor(v)) * 60)
+  if (mm === 60) { mm = 0; hh = (hh + 1) % 24 }
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+function hhmmToFloat(s: string): number | null {
+  const m = s.match(/^(\d{1,2}):(\d{2})$/)
+  if (!m) return null
+  const h = Number(m[1]), mm = Number(m[2])
+  if (h > 23 || mm > 59) return null
+  return h + mm / 60
+}
+function nowFloat(): number {
+  const n = new Date()
+  return n.getHours() + n.getMinutes() / 60
 }
 
 // Map a time-float to % within the sleep window (21.5h–32.5h)
@@ -61,8 +83,8 @@ function ProgressRing({ value, total, size = 76, stroke = 5 }: {
 
 // ─── ProteinChecklist ─────────────────────────────────────────────────────────
 
-function ProteinChecklist({ todayKey }: { todayKey: string }) {
-  const [checked, setChecked] = useLocalStorage<Record<string, boolean>>(todayKey, {})
+function ProteinChecklist({ storageKey, isToday, label }: { storageKey: string; isToday: boolean; label: string }) {
+  const [checked, setChecked] = useLocalStorage<Record<string, boolean>>(storageKey, {})
   const [customItems, setCustomItems] = useLocalStorage<ProteinItem[]>(KEYS.PROTEIN_CUSTOM, [])
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
@@ -80,17 +102,16 @@ function ProteinChecklist({ todayKey }: { todayKey: string }) {
     setChecked(prev => ({ ...prev, [id]: !prev[id] }))
 
   const addCustom = () => {
-    const label = draft.trim()
-    if (!label) { setAdding(false); return }
+    const lbl = draft.trim()
+    if (!lbl) { setAdding(false); return }
     const id = `c_${Date.now()}`
-    setCustomItems(prev => [...prev, { id, label, custom: true }])
+    setCustomItems(prev => [...prev, { id, label: lbl, custom: true }])
     setChecked(prev => ({ ...prev, [id]: true }))
     setDraft('')
     setAdding(false)
   }
 
-  // Weekly adherence (last 7 days) — rough estimate from what we have
-  const adherenceLabel = total > 0 ? `${Math.round((done / total) * 100)}% today` : '–'
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   return (
     <Card noPad>
@@ -99,7 +120,9 @@ function ProteinChecklist({ todayKey }: { todayKey: string }) {
         <ProgressRing value={done} total={total} />
         <div className="flex-1">
           <div className="flex items-center justify-between">
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Protein today</p>
+            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+              {isToday ? 'Protein today' : `Protein · ${label}`}
+            </p>
             {done > 0 && (
               <button
                 onClick={() => setChecked({})}
@@ -113,7 +136,7 @@ function ProteinChecklist({ todayKey }: { todayKey: string }) {
             {done === total && total > 0 ? 'All hit.' : `${total - done} to go.`}
           </p>
           <p className="font-sans text-[12px] text-text-dim mt-1">
-            Today · <span className="text-text">{adherenceLabel}</span>
+            {label} · <span className="text-text">{pct}%</span>
           </p>
         </div>
       </div>
@@ -209,17 +232,22 @@ function ProteinChecklist({ todayKey }: { todayKey: string }) {
 
 type SleepStage = 'phone' | 'bed' | 'awake'
 
-function SleepTracker({ todayKey }: { todayKey: string }) {
-  const [todaySleep, setTodaySleep] = useLocalStorage<SleepEntry>(todayKey, {})
+const SLEEP_STAGES: { k: SleepStage; label: string }[] = [
+  { k: 'phone', label: 'Phone away' },
+  { k: 'bed',   label: 'In bed'     },
+  { k: 'awake', label: 'Awake'      },
+]
 
-  // Load last 7 days of sleep data
+function SleepTracker({ storageKey, isToday, label }: { storageKey: string; isToday: boolean; label: string }) {
+  const [sleep, setSleep] = useLocalStorage<SleepEntry>(storageKey, {})
+
+  // Week chart always reflects the real trailing 7 days.
   const today = new Date()
   const last7 = eachDayOfInterval({ start: subDays(today, 6), end: today })
 
-  // We read each day's sleep from localStorage directly (one-time read)
   const weekData = last7.map(day => {
     const key = KEYS.sleepDay(format(day, 'yyyy-MM-dd'))
-    const isToday = format(day, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
+    const isTdy = format(day, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
     try {
       const raw = localStorage.getItem(key)
       const entry: SleepEntry = raw ? JSON.parse(raw) : {}
@@ -232,9 +260,9 @@ function SleepTracker({ todayKey }: { todayKey: string }) {
             return Math.round((a - b) * 10) / 10
           })()
         : null
-      return { day, label: format(day, 'EEE').slice(0, 2), isToday, ...entry, dur }
+      return { day, label: format(day, 'EEE').slice(0, 2), isToday: isTdy, ...entry, dur }
     } catch {
-      return { day, label: format(day, 'EEE').slice(0, 2), isToday, dur: null }
+      return { day, label: format(day, 'EEE').slice(0, 2), isToday: isTdy, dur: null }
     }
   })
 
@@ -250,24 +278,16 @@ function SleepTracker({ todayKey }: { todayKey: string }) {
     ? complete.reduce((a, d) => a + (d.dur ?? 0), 0) / complete.length
     : null
 
-  // Tonight logger stage
-  const stage: SleepStage | 'done' | null =
-    todaySleep.awake != null ? 'done' :
-    todaySleep.bed   != null ? 'awake' :
-    todaySleep.phone != null ? 'bed'   : 'phone'
-
-  const logNext = () => {
-    const now = new Date()
-    const h = now.getHours() + now.getMinutes() / 60
-    if (stage === 'phone') setTodaySleep(prev => ({ ...prev, phone: h }))
-    else if (stage === 'bed') setTodaySleep(prev => ({ ...prev, bed: h }))
-    else if (stage === 'awake') setTodaySleep(prev => ({ ...prev, awake: h }))
+  const setStage = (k: SleepStage, v: number | undefined) => {
+    setSleep(prev => {
+      const next = { ...prev }
+      if (v == null) delete next[k]
+      else next[k] = v
+      return next
+    })
   }
 
-  const stageLabel =
-    stage === 'phone' ? 'Log phone away' :
-    stage === 'bed'   ? 'Log in bed'     :
-    stage === 'awake' ? 'Log awake'      : '✓ Cycle complete'
+  const anyLogged = sleep.phone != null || sleep.bed != null || sleep.awake != null
 
   return (
     <Card noPad>
@@ -411,76 +431,67 @@ function SleepTracker({ todayKey }: { todayKey: string }) {
 
       <Divider />
 
-      {/* Tonight cycle logger */}
+      {/* Day cycle logger — editable times, any order, log later */}
       <div className="px-[18px] py-4">
         <div className="flex justify-between items-center mb-3">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Tonight · cycle</p>
-          {todaySleep.phone != null && (
+          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+            {isToday ? 'Tonight · cycle' : `${label} · cycle`}
+          </p>
+          {anyLogged && (
             <button
-              onClick={() => setTodaySleep({})}
+              onClick={() => setSleep({})}
               className="font-mono text-[9px] text-text-faint uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer hover:text-warn transition-colors"
             >
-              Reset
+              Clear
             </button>
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5 mb-3">
-          {([
-            { k: 'phone' as SleepStage, label: 'Phone away', val: todaySleep.phone },
-            { k: 'bed'   as SleepStage, label: 'In bed',     val: todaySleep.bed   },
-            { k: 'awake' as SleepStage, label: 'Awake',      val: todaySleep.awake },
-          ]).map(s => {
-            const on = s.val != null
+        <div className="flex flex-col gap-2">
+          {SLEEP_STAGES.map(s => {
+            const val = sleep[s.k]
+            const on = val != null
             return (
               <div
                 key={s.k}
                 className={[
-                  'relative px-2.5 py-2.5 rounded-card border transition-colors',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-card border transition-colors',
                   on ? 'bg-[var(--color-accent-soft)] border-accent' : 'bg-panel-inset border-[var(--color-panel-border)]',
                 ].join(' ')}
               >
+                <span className={`font-mono text-[10px] uppercase tracking-[0.08em] font-semibold w-[78px] shrink-0 ${on ? 'text-accent' : 'text-text-dim'}`}>
+                  {s.label}
+                </span>
+                <input
+                  type="time"
+                  value={on ? floatToHHMM(val!) : ''}
+                  onChange={e => {
+                    const v = hhmmToFloat(e.target.value)
+                    setStage(s.k, v ?? undefined)
+                  }}
+                  className="flex-1 min-w-0 bg-transparent border-none outline-none font-mono text-[15px] text-text"
+                />
+                <button
+                  onClick={() => setStage(s.k, nowFloat())}
+                  className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.06em] text-text-dim hover:text-accent bg-transparent border-none cursor-pointer shrink-0 px-1.5 py-1"
+                >
+                  <Clock size={11} strokeWidth={1.8} /> Now
+                </button>
                 {on && (
                   <button
-                    onClick={() => {
-                      // clear this stage and all later ones
-                      const cleared: SleepEntry = { ...todaySleep }
-                      if (s.k === 'phone') { delete cleared.phone; delete cleared.bed; delete cleared.awake }
-                      if (s.k === 'bed')   { delete cleared.bed;   delete cleared.awake }
-                      if (s.k === 'awake') { delete cleared.awake }
-                      setTodaySleep(cleared)
-                    }}
-                    className="absolute top-1.5 right-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-panel border border-[var(--color-panel-border)] cursor-pointer"
-                    title={`Reset ${s.label}`}
+                    onClick={() => setStage(s.k, undefined)}
+                    className="w-5 h-5 flex items-center justify-center rounded-full bg-panel border border-[var(--color-panel-border)] cursor-pointer shrink-0"
+                    title={`Clear ${s.label}`}
                   >
                     <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                      <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-text-faint" />
+                      <path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="#9A968D" strokeWidth="1.3" strokeLinecap="round" />
                     </svg>
                   </button>
                 )}
-                <p className={`font-mono text-[9px] uppercase tracking-[0.08em] font-semibold ${on ? 'text-accent' : 'text-text-dim'}`}>
-                  {s.label}
-                </p>
-                <p className={`font-mono text-[15px] font-medium tracking-[-0.02em] mt-1 ${on ? 'text-text' : 'text-text-faint'}`}>
-                  {s.val != null ? fmtTime(s.val) : '— : —'}
-                </p>
               </div>
             )
           })}
         </div>
-
-        <button
-          onClick={logNext}
-          disabled={stage === 'done'}
-          className={[
-            'w-full py-3.5 rounded-card border-none font-sans text-[13px] font-semibold uppercase tracking-[0.06em] cursor-pointer flex items-center justify-center',
-            stage === 'done'
-              ? 'bg-transparent border border-[var(--color-panel-border)] text-text-dim cursor-default'
-              : 'bg-accent text-accent-text',
-          ].join(' ')}
-        >
-          {stageLabel}
-        </button>
       </div>
     </Card>
   )
@@ -489,16 +500,18 @@ function SleepTracker({ todayKey }: { todayKey: string }) {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function Daily() {
-  const today    = new Date()
-  const todayStr = format(today, 'yyyy-MM-dd')
+  const { activeDate, isToday } = useLogDate()
+  const date = parseKey(activeDate)
+  const label = isToday ? 'Today' : format(date, 'EEE · MMM d')
 
   return (
     <div className="pt-6 pb-8 flex flex-col gap-5">
-      <PageTitle kicker={format(today, 'EEE · MMM d')} title="Daily." />
-      <ProteinChecklist todayKey={KEYS.proteinDay(todayStr)} />
-      <SleepTracker todayKey={KEYS.sleepDay(todayStr)} />
+      <PageTitle kicker={format(date, 'EEE · MMM d')} title="Daily." />
+      <DateStrip />
+      <ProteinChecklist key={`p-${activeDate}`} storageKey={KEYS.proteinDay(activeDate)} isToday={isToday} label={label} />
+      <SleepTracker key={`s-${activeDate}`} storageKey={KEYS.sleepDay(activeDate)} isToday={isToday} label={label} />
       <p className="text-center font-mono text-[11px] text-text-faint uppercase tracking-[0.14em]">
-        Resets at midnight · local time
+        {isToday ? 'Resets at midnight · local time' : 'Editing a past day'}
       </p>
     </div>
   )

@@ -1,21 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight } from 'lucide-react'
+import { format } from 'date-fns'
+import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight, Pencil } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { EXERCISES, SPLIT, COMPOUND_IDS, DAY_LABELS } from '../lib/data'
-import type { Session, WorkoutType, LiveSet } from '../lib/types'
-import { Card, Pill, Btn, Divider, EmptyState } from '../components/ui'
+import { useLogDate } from '../lib/dateContext'
+import { todayKey, parseKey } from '../lib/date'
+import type { Session, WorkoutType, LiveSet, LiveLog, WorkoutDraft, Exercise } from '../lib/types'
+import { Card, Pill, Btn, Divider } from '../components/ui'
+import { DateStrip } from '../components/DateStrip'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function getTodayType(): WorkoutType | 'REST' {
-  const todayStr = new Date().toISOString().split('T')[0]
+function getTypeForDate(dateStr: string): WorkoutType {
   try {
-    const override = localStorage.getItem(KEYS.dayOverride(todayStr))
-    if (override) return JSON.parse(override) as WorkoutType | 'REST'
+    const override = localStorage.getItem(KEYS.dayOverride(dateStr))
+    if (override) {
+      const v = JSON.parse(override) as WorkoutType | 'REST'
+      if (v && v !== 'REST') return v
+    }
   } catch {}
-  return SPLIT[new Date().getDay()]
+  const t = SPLIT[parseKey(dateStr).getDay()]
+  return t === 'REST' ? 'PUSH' : t
 }
 
 function getExercisesForDay(type: WorkoutType) {
@@ -40,6 +47,13 @@ function getLastSets(
     }
   }
   return { w: 20, r: 10 }
+}
+
+function defaultSetsFor(ex: Exercise, sessions: Session[], type: WorkoutType): LiveSet[] {
+  const last = getLastSets(sessions, type, ex.id)
+  return Array.from({ length: ex.defaultSets }, () => ({
+    done: false, expW: last.w, expR: last.r, actW: last.w, actR: last.r,
+  }))
 }
 
 function isStalled(
@@ -175,8 +189,6 @@ function SetRow({
 
 // ─── ExerciseCard ─────────────────────────────────────────────────────────────
 
-type ExerciseEntry = (typeof EXERCISES)[0]
-
 function ExerciseCard({
   exercise,
   idx,
@@ -190,7 +202,7 @@ function ExerciseCard({
   onSkip,
   stalled,
 }: {
-  exercise: ExerciseEntry
+  exercise: Exercise
   idx: number
   isActive: boolean
   onSelect: () => void
@@ -296,6 +308,7 @@ interface SummaryData {
   totalSets: number
   prs: string[]   // exercise names that hit a new PR
   exerciseLines: { name: string; sets: number; topWeight: number }[]
+  manual: boolean
 }
 
 function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => void }) {
@@ -312,7 +325,9 @@ function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => voi
               : <Flame  size={28} strokeWidth={1.5} className="text-accent-text" />
             }
           </div>
-          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.14em] mb-2">Session complete</p>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.14em] mb-2">
+            {data.manual ? 'Entry saved' : 'Session complete'}
+          </p>
           <h1 className="font-serif text-[36px] leading-[40px] font-medium text-text tracking-[-0.05em]">
             {hasPRs ? 'New PRs hit.' : 'Work done.'}
           </h1>
@@ -326,7 +341,7 @@ function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => voi
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-2.5">
           {[
-            { icon: Clock,    value: `${data.durationMin}`,     unit: 'MIN'  },
+            { icon: Clock,    value: data.manual ? '—' : `${data.durationMin}`, unit: 'MIN'  },
             { icon: Dumbbell, value: `${Math.round(data.volume).toLocaleString()}`, unit: 'KG' },
             { icon: Trophy,   value: `${data.doneSets}/${data.totalSets}`, unit: 'SETS' },
           ].map(({ icon: Icon, value, unit }) => (
@@ -362,195 +377,279 @@ function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => voi
   )
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ─── Initial state loader ───────────────────────────────────────────────────────
 
-type LiveLog = Record<number, LiveSet[]>
+interface InitState {
+  type: WorkoutType
+  customExercises: Exercise[]
+  log: LiveLog
+  activeId: string | null
+  startedAt: number | null
+  editingId: string | null
+  started: boolean
+}
 
-export default function Workout() {
+function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitState {
+  // 1. Resume an in-progress / partially-entered draft.
+  try {
+    const raw = localStorage.getItem(KEYS.workoutDraft(date))
+    if (raw) {
+      const d = JSON.parse(raw) as WorkoutDraft
+      if (d && d.log) {
+        return {
+          type: d.type,
+          customExercises: d.customExercises ?? [],
+          log: d.log,
+          activeId: d.activeId ?? null,
+          startedAt: d.startedAt ?? null,
+          editingId: d.editingId ?? null,
+          started: true,
+        }
+      }
+    }
+  } catch {}
+
+  // 2. Past day with an existing saved session → edit it.
+  if (!isToday) {
+    const existing = sessions.find(s => s.date === date && s.finishedAt !== null)
+    if (existing) {
+      const type = existing.type
+      const base = getExercisesForDay(type)
+      const custom: Exercise[] = existing.exercises
+        .filter(el => !EXERCISES.some(x => x.id === el.exerciseId))
+        .map(el => ({
+          id: el.exerciseId,
+          name: 'Custom exercise',
+          defaultSets: el.sets.length,
+          defaultReps: '—',
+          category: 'isolation' as const,
+          day: [type],
+        }))
+      const log: LiveLog = {}
+      existing.exercises.forEach(el => {
+        log[el.exerciseId] = el.sets.map(s => ({
+          done: s.done, expW: s.weight, expR: s.reps, actW: s.weight, actR: s.reps,
+        }))
+      })
+      base.forEach(ex => { if (!log[ex.id]) log[ex.id] = defaultSetsFor(ex, sessions, type) })
+      const ordered = [...base, ...custom]
+      return {
+        type, customExercises: custom, log,
+        activeId: ordered[0]?.id ?? null,
+        startedAt: existing.startedAt,
+        editingId: existing.id,
+        started: true,
+      }
+    }
+  }
+
+  // 3. Fresh.
+  const type = getTypeForDate(date)
+  const exercises = getExercisesForDay(type)
+  const log: LiveLog = {}
+  exercises.forEach(ex => { log[ex.id] = defaultSetsFor(ex, sessions, type) })
+  return {
+    type, customExercises: [], log,
+    activeId: exercises[0]?.id ?? null,
+    startedAt: null, editingId: null,
+    started: !isToday,   // manual entry needs no Begin gate
+  }
+}
+
+// ─── Screen (per active date) ────────────────────────────────────────────────────
+
+function WorkoutForDate({ date }: { date: string }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [started, setStarted] = useState(() => !!(location.state as { start?: boolean } | null)?.start)
   const [sessions, setSessions] = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
+  const isToday = date === todayKey()
+  const mode: 'live' | 'manual' = isToday ? 'live' : 'manual'
 
-  const todayType = getTodayType()
-  const workoutType: WorkoutType = todayType === 'REST' ? 'PUSH' : todayType
-  const baseExercises = getExercisesForDay(workoutType)
-  const [customExercises, setCustomExercises] = useState<ExerciseEntry[]>([])
-  const exercises = [...baseExercises, ...customExercises]
+  const init = useRef<InitState>(loadInitial(date, isToday, sessions)).current
 
-  const buildInitialLog = useCallback((): LiveLog => {
-    const log: LiveLog = {}
-    exercises.forEach((ex, i) => {
-      const last = getLastSets(sessions, workoutType, ex.id)
-      log[i] = Array.from({ length: ex.defaultSets }, () => ({
-        done: false,
-        expW: last.w,
-        expR: last.r,
-        actW: last.w,
-        actR: last.r,
-      }))
-    })
-    return log
-  }, []) // intentionally empty — only run once on mount
-
-  const [log, setLog] = useState<LiveLog>(buildInitialLog)
-  const [activeIdx, setActiveIdx] = useState(0)
+  const [type, setType] = useState<WorkoutType>(init.type)
+  const [customExercises, setCustomExercises] = useState<Exercise[]>(init.customExercises)
+  const [log, setLog] = useState<LiveLog>(init.log)
+  const [activeId, setActiveId] = useState<string | null>(init.activeId)
+  const [editingId, setEditingId] = useState<string | null>(init.editingId)
+  const [started, setStarted] = useState(
+    init.started || !!(location.state as { start?: boolean } | null)?.start
+  )
   const [elapsed, setElapsed] = useState(0)
   const [summary, setSummary] = useState<SummaryData | null>(null)
   const [showAddExercise, setShowAddExercise] = useState(false)
   const [newExName, setNewExName] = useState('')
   const [showDiscard, setShowDiscard] = useState(false)
-  const startRef = useRef<number | null>(null)
+  const startRef = useRef<number | null>(init.startedAt)
 
+  const exercises = [...getExercisesForDay(type), ...customExercises]
+
+  // Timer (live only)
   useEffect(() => {
-    if (!started) return
+    if (!started || mode !== 'live') return
     if (startRef.current === null) startRef.current = Date.now()
     const id = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startRef.current!) / 1000))
     }, 1000)
     return () => clearInterval(id)
-  }, [started])
+  }, [started, mode])
 
-  const totalSets = exercises.reduce((a, e) => a + e.defaultSets, 0)
-  const doneSets  = Object.values(log).reduce((a, arr) => a + arr.filter(s => s.done).length, 0)
-  const volume    = Object.values(log).reduce(
-    (acc, arr) => acc + arr.filter(s => s.done).reduce((a, s) => a + s.actW * s.actR, 0),
+  // Auto-save draft on every meaningful change (this is the reload-safety fix).
+  useEffect(() => {
+    if (!started) return
+    const draft: WorkoutDraft = {
+      date, type, mode,
+      startedAt: startRef.current,
+      customExercises, log, activeId, editingId,
+      updatedAt: Date.now(),
+    }
+    try {
+      localStorage.setItem(KEYS.workoutDraft(date), JSON.stringify(draft))
+    } catch (err) {
+      console.warn('failed to persist workout draft', err)
+    }
+  }, [started, date, type, mode, customExercises, log, activeId, editingId])
+
+  const clearDraft = () => {
+    try { localStorage.removeItem(KEYS.workoutDraft(date)) } catch {}
+  }
+
+  const totalSets = exercises.reduce((a, e) => a + (log[e.id]?.length ?? e.defaultSets), 0)
+  const doneSets  = exercises.reduce((a, e) => a + (log[e.id]?.filter(s => s.done).length ?? 0), 0)
+  const volume    = exercises.reduce(
+    (acc, e) => acc + (log[e.id] ?? []).filter(s => s.done).reduce((a, s) => a + s.actW * s.actR, 0),
     0
   )
 
-  const updateSet = (exIdx: number, setIdx: number, ns: LiveSet) => {
-    setLog(prev => ({
-      ...prev,
-      [exIdx]: prev[exIdx].map((s, i) => (i === setIdx ? ns : s)),
-    }))
+  const updateSet = (id: string, setIdx: number, ns: LiveSet) => {
+    setLog(prev => ({ ...prev, [id]: prev[id].map((s, i) => (i === setIdx ? ns : s)) }))
   }
 
-  const logSet = (exIdx: number, setIdx: number) => {
-    setLog(prev => ({
-      ...prev,
-      [exIdx]: prev[exIdx].map((s, i) => (i === setIdx ? { ...s, done: true } : s)),
-    }))
+  const logSet = (id: string, setIdx: number) => {
+    setLog(prev => ({ ...prev, [id]: prev[id].map((s, i) => (i === setIdx ? { ...s, done: true } : s)) }))
     navigator.vibrate?.(15)
-    // auto-advance to next exercise when current exercise is fully done
-    const currentSets = log[exIdx] || []
+    const currentSets = log[id] || []
     const allDoneAfter = currentSets.every((s, i) => i === setIdx || s.done)
     if (allDoneAfter) {
-      const nextEx = exercises.findIndex((_, i) => i > exIdx)
-      if (nextEx !== -1) setTimeout(() => setActiveIdx(nextEx), 200)
+      const curPos = exercises.findIndex(e => e.id === id)
+      const next = exercises[curPos + 1]
+      if (next) setTimeout(() => setActiveId(next.id), 200)
     }
   }
 
-  const unlogSet = (exIdx: number, setIdx: number) => {
-    setLog(prev => ({
-      ...prev,
-      [exIdx]: prev[exIdx].map((s, i) => (i === setIdx ? { ...s, done: false } : s)),
-    }))
+  const unlogSet = (id: string, setIdx: number) => {
+    setLog(prev => ({ ...prev, [id]: prev[id].map((s, i) => (i === setIdx ? { ...s, done: false } : s)) }))
   }
 
-  const addSet = (exIdx: number) => {
+  const addSet = (id: string) => {
     setLog(prev => {
-      const existing = prev[exIdx] || []
+      const existing = prev[id] || []
       const ref = existing[existing.length - 1] ?? { expW: 20, expR: 10, actW: 20, actR: 10, done: false }
-      return {
-        ...prev,
-        [exIdx]: [...existing, { done: false, expW: ref.actW, expR: ref.actR, actW: ref.actW, actR: ref.actR }],
-      }
+      return { ...prev, [id]: [...existing, { done: false, expW: ref.actW, expR: ref.actR, actW: ref.actW, actR: ref.actR }] }
     })
   }
 
-  const skipExercise = (exIdx: number) => {
-    setLog(prev => ({
-      ...prev,
-      [exIdx]: (prev[exIdx] || []).map(s => ({ ...s, done: false })),
-    }))
-    // collapse and advance
-    const nextEx = exercises.findIndex((_, i) => i > exIdx)
-    setActiveIdx(nextEx !== -1 ? nextEx : -1)
+  const skipExercise = (id: string) => {
+    setLog(prev => ({ ...prev, [id]: (prev[id] || []).map(s => ({ ...s, done: false })) }))
+    const curPos = exercises.findIndex(e => e.id === id)
+    const next = exercises[curPos + 1]
+    setActiveId(next ? next.id : null)
   }
 
   const handleAddExercise = () => {
     const name = newExName.trim()
     if (!name) return
-    const newEx: ExerciseEntry = {
-      id: crypto.randomUUID(),
-      name,
-      defaultSets: 3,
-      defaultReps: '10–12',
-      category: 'isolation',
-      day: [workoutType],
+    const newEx: Exercise = {
+      id: crypto.randomUUID(), name,
+      defaultSets: 3, defaultReps: '10–12',
+      category: 'isolation', day: [type],
     }
-    const newIdx = exercises.length
     setCustomExercises(prev => [...prev, newEx])
     setLog(prev => ({
       ...prev,
-      [newIdx]: Array.from({ length: 3 }, () => ({ done: false, expW: 20, expR: 10, actW: 20, actR: 10 })),
+      [newEx.id]: Array.from({ length: 3 }, () => ({ done: false, expW: 20, expR: 10, actW: 20, actR: 10 })),
     }))
-    setActiveIdx(newIdx)
+    setActiveId(newEx.id)
     setNewExName('')
     setShowAddExercise(false)
   }
 
-  const finishWorkout = () => {
-    const finishedAt = Date.now()
+  // Switch workout type for a manual entry — rebuilds the exercise list fresh.
+  const changeType = (next: WorkoutType) => {
+    try { localStorage.setItem(KEYS.dayOverride(date), JSON.stringify(next)) } catch {}
+    const ex = getExercisesForDay(next)
+    const nl: LiveLog = {}
+    ex.forEach(e => { nl[e.id] = defaultSetsFor(e, sessions, next) })
+    setType(next)
+    setCustomExercises([])
+    setLog(nl)
+    setActiveId(ex[0]?.id ?? null)
+    setEditingId(null)
+  }
+
+  const finishWorkout = useCallback(() => {
+    const now = Date.now()
+    const noon = parseKey(date).getTime() + 12 * 3600 * 1000
+    const startedAt = mode === 'manual' ? noon : (startRef.current ?? now)
+    const finishedAt = mode === 'manual' ? noon : now
+    const id = editingId ?? crypto.randomUUID()
+
     const session: Session = {
-      id: crypto.randomUUID(),
-      date: new Date().toISOString().split('T')[0],
-      type: workoutType,
-      startedAt: startRef.current ?? finishedAt,
-      finishedAt,
-      exercises: exercises.map((ex, i) => {
-        const sets = (log[i] || []).map(s => ({ weight: s.actW, reps: s.actR, done: s.done }))
+      id, date, type, startedAt, finishedAt,
+      exercises: exercises.map(ex => {
+        const sets = (log[ex.id] || []).map(s => ({ weight: s.actW, reps: s.actR, done: s.done }))
         const skipped = sets.length > 0 && sets.every(s => !s.done)
         return { exerciseId: ex.id, sets, skipped }
       }),
     }
-    setSessions(prev => [...prev, session])
 
-    // Build summary
-    const totalSets = exercises.reduce((a, e) => a + e.defaultSets, 0)
-    const doneSets  = Object.values(log).reduce((a, arr) => a + arr.filter(s => s.done).length, 0)
-    const vol       = Object.values(log).reduce(
-      (acc, arr) => acc + arr.filter(s => s.done).reduce((a, s) => a + s.actW * s.actR, 0), 0
-    )
+    setSessions(prev => {
+      const idx = prev.findIndex(s => s.id === id)
+      if (idx === -1) return [...prev, session]
+      const copy = [...prev]; copy[idx] = session; return copy
+    })
+    clearDraft()
+
     const prs = exercises
-      .filter((_, i) => (log[i] || []).some(s => s.done && s.actW > s.expW))
+      .filter(ex => (log[ex.id] || []).some(s => s.done && s.actW > s.expW))
       .map(e => e.name)
-    const exerciseLines = exercises.map((ex, i) => {
-      const sets = (log[i] || []).filter(s => s.done)
+    const exerciseLines = exercises.map(ex => {
+      const sets = (log[ex.id] || []).filter(s => s.done)
       const topWeight = sets.length ? Math.max(...sets.map(s => s.actW)) : 0
       return { name: ex.name, sets: sets.length, topWeight }
     }).filter(e => e.sets > 0)
 
     setSummary({
-      type: workoutType,
-      durationMin: Math.round((finishedAt - (startRef.current ?? finishedAt)) / 60000),
-      volume: vol,
+      type,
+      durationMin: Math.round((now - (startRef.current ?? now)) / 60000),
+      volume,
       doneSets,
       totalSets,
       prs,
       exerciseLines,
+      manual: mode === 'manual',
     })
-  }
+  }, [date, type, mode, editingId, exercises, log, volume, doneSets, totalSets, setSessions])
 
   if (summary) {
     return <SummaryOverlay data={summary} onDone={() => navigate('/today')} />
   }
 
-  if (!started) {
+  // Live "Begin" gate (today, fresh, not yet started)
+  if (mode === 'live' && !started) {
     return (
       <div className="pt-6 pb-8 flex flex-col gap-4">
+        <DateStrip />
         <div>
           <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.14em]">Ready</p>
           <h1 className="font-serif text-[30px] leading-[34px] text-text font-medium tracking-[-0.04em] mt-1 capitalize">
-            {workoutType.toLowerCase()} day
+            {type.toLowerCase()} day
           </h1>
         </div>
         <Card>
-          <p className="font-sans text-[14px] text-text-dim leading-[22px]">
-            {DAY_LABELS[workoutType]}
-          </p>
+          <p className="font-sans text-[14px] text-text-dim leading-[22px]">{DAY_LABELS[type]}</p>
           <p className="font-mono text-[11px] text-text-faint mt-2 tracking-[0.04em]">
-            {getExercisesForDay(workoutType).length} exercises · tap Begin when you're ready
+            {getExercisesForDay(type).length} exercises · tap Begin when you're ready
           </p>
         </Card>
         <Btn fullWidth onClick={() => setStarted(true)}>
@@ -573,14 +672,18 @@ export default function Workout() {
         <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pt-4 pb-24 md:p-4 md:items-center">
           <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setShowDiscard(false)} />
           <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
-            <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Discard session?</p>
+            <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">
+              {editingId ? 'Discard changes?' : 'Discard session?'}
+            </p>
             <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-6">
-              Nothing will be saved. This session won't appear in your history.
+              {editingId
+                ? 'Your edits to this entry will be lost. The saved version stays as it was.'
+                : "Nothing will be saved. This session won't appear in your history."}
             </p>
             <div className="flex gap-3">
               <Btn variant="secondary" onClick={() => setShowDiscard(false)} className="flex-1">Keep going</Btn>
               <button
-                onClick={() => navigate('/today')}
+                onClick={() => { clearDraft(); navigate('/today') }}
                 className="flex-1 flex items-center justify-center gap-2 px-[18px] py-3.5 rounded-card bg-danger text-accent-text font-sans font-semibold text-[13px] uppercase tracking-[0.04em] border-none cursor-pointer transition-all active:scale-[0.98]"
               >
                 Discard
@@ -590,27 +693,53 @@ export default function Workout() {
         </div>
       )}
 
+      <DateStrip />
+
       {/* ── Header ── */}
       <div className="flex justify-between items-end">
         <div>
-          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.14em]">In session</p>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.14em] flex items-center gap-1.5">
+            {mode === 'manual'
+              ? <>{editingId ? <><Pencil size={11} strokeWidth={2} /> Editing</> : 'Manual entry'} · {format(parseKey(date), 'EEE MMM d')}</>
+              : 'In session'}
+          </p>
           <h1 className="font-serif text-[30px] leading-[34px] text-text font-medium tracking-[-0.04em] mt-1 capitalize">
-            {workoutType.toLowerCase()} day
+            {type.toLowerCase()} day
           </h1>
           <button
             onClick={() => setShowDiscard(true)}
             className="mt-1 bg-transparent border-none font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] cursor-pointer hover:text-danger transition-colors p-0"
           >
-            Discard session
+            {editingId ? 'Discard changes' : 'Discard session'}
           </button>
         </div>
-        <div className="text-right">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Elapsed</p>
-          <p className="font-mono text-[24px] text-text font-medium tracking-[-0.02em]">
-            {fmtElapsed(elapsed)}
-          </p>
-        </div>
+        {mode === 'live' ? (
+          <div className="text-right">
+            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Elapsed</p>
+            <p className="font-mono text-[24px] text-text font-medium tracking-[-0.02em]">{fmtElapsed(elapsed)}</p>
+          </div>
+        ) : null}
       </div>
+
+      {/* ── Manual type selector ── */}
+      {mode === 'manual' && (
+        <div className="flex gap-1.5">
+          {(['PUSH', 'PULL', 'LEGS'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => { if (t !== type) changeType(t) }}
+              className={[
+                'flex-1 py-2 rounded-card border font-sans text-[11px] font-semibold uppercase tracking-[0.06em] cursor-pointer transition-colors',
+                t === type
+                  ? 'bg-[var(--color-accent-soft)] border-accent text-accent'
+                  : 'bg-panel-inset border-[var(--color-panel-border)] text-text-dim',
+              ].join(' ')}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Progress bar ── */}
       <div>
@@ -621,7 +750,7 @@ export default function Workout() {
         <div className="h-[3px] rounded-pill bg-panel-inset overflow-hidden">
           <div
             className="h-full bg-accent transition-all duration-300 ease-out"
-            style={{ width: `${(doneSets / totalSets) * 100}%` }}
+            style={{ width: `${totalSets > 0 ? (doneSets / totalSets) * 100 : 0}%` }}
           />
         </div>
       </div>
@@ -633,15 +762,15 @@ export default function Workout() {
             key={ex.id}
             exercise={ex}
             idx={i}
-            isActive={activeIdx === i}
-            onSelect={() => setActiveIdx(i === activeIdx ? -1 : i)}
-            sets={log[i] || []}
-            onUpdateSet={(si, ns) => updateSet(i, si, ns)}
-            onLog={si => logSet(i, si)}
-            onUnlog={si => unlogSet(i, si)}
-            onAddSet={() => addSet(i)}
-            onSkip={() => skipExercise(i)}
-            stalled={isStalled(sessions, workoutType, ex.id)}
+            isActive={activeId === ex.id}
+            onSelect={() => setActiveId(activeId === ex.id ? null : ex.id)}
+            sets={log[ex.id] || []}
+            onUpdateSet={(si, ns) => updateSet(ex.id, si, ns)}
+            onLog={si => logSet(ex.id, si)}
+            onUnlog={si => unlogSet(ex.id, si)}
+            onAddSet={() => addSet(ex.id)}
+            onSkip={() => skipExercise(ex.id)}
+            stalled={isStalled(sessions, type, ex.id)}
           />
         ))}
       </div>
@@ -673,11 +802,19 @@ export default function Workout() {
         </button>
       )}
 
-      {/* ── Finish ── */}
+      {/* ── Finish / Save ── */}
       <Btn fullWidth onClick={finishWorkout}>
-        Finish workout · {Math.round(volume).toLocaleString()} kg
+        {mode === 'manual'
+          ? <>{editingId ? 'Save changes' : 'Save entry'} · {Math.round(volume).toLocaleString()} kg</>
+          : <>Finish workout · {Math.round(volume).toLocaleString()} kg</>}
         <ArrowRight size={16} strokeWidth={1.6} />
       </Btn>
     </div>
   )
+}
+
+export default function Workout() {
+  const { activeDate } = useLogDate()
+  // Remount on date change so all per-day state re-initialises from its draft/session.
+  return <WorkoutForDate key={activeDate} date={activeDate} />
 }
