@@ -6,6 +6,7 @@ import { KEYS } from '../lib/storage'
 import { SPLIT } from '../lib/data'
 import type { Session, MeasurementEntry } from '../lib/types'
 import { Card, Stat, SectionLabel, PageTitle, Btn, Pill, Divider, EmptyState } from '../components/ui'
+import { BodyStory, StrengthSection } from '../components/Insights'
 
 // ─── Heatmap ─────────────────────────────────────────────────────────────────
 
@@ -356,6 +357,12 @@ export default function Progress() {
     <>
       <div className="pt-6 pb-8 flex flex-col gap-5">
         <PageTitle kicker="Progress · Last 26 weeks" title="Consistency." />
+
+        {/* ── Transformation hero ── */}
+        {measurements.length > 0 && <BodyStory ms={measurements} />}
+
+        {/* ── Strength progression + PRs ── */}
+        <StrengthSection sessions={sessions} />
 
         {/* ── Streak stats + heatmap ── */}
         <Card>
