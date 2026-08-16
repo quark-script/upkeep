@@ -1,6 +1,14 @@
 export type WorkoutType = 'PUSH' | 'PULL' | 'LEGS'
 export type DayType = WorkoutType | 'REST'
 
+// How a lift is loaded and counted:
+//  · kg         → `weight` is the bar/stack load in kg, `reps` is repetitions
+//  · bodyweight → `weight` is *added* kg (0 = pure bodyweight), `reps` is repetitions
+//  · time       → `weight` is unused, `reps` holds the hold duration in seconds
+export type LoadUnit = 'kg' | 'bodyweight' | 'time'
+
+export type MuscleGroup = 'chest' | 'back' | 'shoulders' | 'arms' | 'legs' | 'core'
+
 export interface SetEntry {
   weight: number
   reps: number
@@ -10,6 +18,7 @@ export interface SetEntry {
 export interface ExerciseLog {
   exerciseId: string
   name?: string       // human name captured at log time (survives export & custom lifts)
+  unit?: LoadUnit     // load unit captured at log time; absent = 'kg' (pre-unit sessions)
   sets: SetEntry[]
   skipped?: boolean
   note?: string       // per-exercise note / instruction
@@ -32,7 +41,9 @@ export interface Exercise {
   defaultReps: string
   category: 'compound' | 'isolation'
   day: WorkoutType[]
-  optional?: boolean  // not in the default day session; available via the picker
+  optional?: boolean    // not in the default day session; available via the picker
+  unit?: LoadUnit       // absent = 'kg'
+  groups?: MuscleGroup[]  // muscles trained, for weekly balance
 }
 
 export interface MeasurementEntry {
@@ -65,18 +76,68 @@ export interface ProteinItem {
   id: string
   label: string
   time?: string
-  custom?: boolean
+  grams?: number    // protein content estimate; absent = 0 (e.g. creatine)
+  custom?: boolean  // user-added to the standing daily plan
+  oneOff?: boolean  // logged for a single day only, not part of the plan
 }
 
-// Times stored as 24h floats (0–25); values >24 crossed midnight
+// One night's sleep, keyed by the date you went to bed — so `awake` is the
+// following morning. Times are 24h floats (0–25); values >24 crossed midnight.
 export interface SleepEntry {
   phone?: number
   bed?: number
   awake?: number
+  quality?: number   // 1–5, how rested you felt
+}
+
+// ─── Scheduled routines (medicines, skincare) ────────────────────────────────
+
+// When a routine item is expected. `weekly.days` uses JS weekdays (0 = Sunday).
+// `interval` counts from `anchor`, so "every 3rd day" survives missed days.
+export type Schedule =
+  | { kind: 'daily' }
+  | { kind: 'weekly'; days: number[] }
+  | { kind: 'interval'; everyDays: number; anchor: string }
+  | { kind: 'asNeeded' }
+
+export type DaySlot = 'morning' | 'afternoon' | 'evening' | 'night' | 'anytime'
+
+export type MedForm = 'tablet' | 'capsule' | 'sachet' | 'drops' | 'injection' | 'other'
+
+export interface Medicine {
+  id: string
+  name: string          // "Magnesium"
+  dose?: string         // "250 mg", "60,000 IU"
+  form?: MedForm
+  schedule: Schedule
+  slot: DaySlot
+  note?: string         // "with food", "after dinner"
+  startedOn?: string    // yyyy-MM-dd; nothing is "missed" before this
+  active: boolean
+}
+
+export type SkinRoutine = 'am' | 'pm'
+export type SkinKind = 'cleanser' | 'active' | 'moisturiser' | 'sunscreen' | 'other'
+
+export interface SkinStep {
+  id: string
+  label: string         // "Niacinamide 10% serum"
+  brand?: string        // "Brand name"
+  kind?: SkinKind
+  routine: SkinRoutine
+  order: number         // application order within the routine
+  schedule: Schedule
+  note?: string         // "wait 1 min before next step"
+  startedOn?: string    // yyyy-MM-dd; nothing counts as skipped before this
+  active: boolean
 }
 
 export interface Settings {
   theme: 'vault' | 'ledger' | 'spec'
+  restSeconds?: number      // rest-timer default; absent = 90
+  restSound?: boolean       // chime when rest ends; absent = true
+  restAuto?: boolean        // start rest automatically on each logged set; absent = false
+  proteinTargetG?: number   // daily protein goal in grams; absent = derived from body weight
 }
 
 // Live set state during an active workout session

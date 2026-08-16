@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Moon, AlertTriangle, ArrowRight, Dumbbell, X, History as HistoryIcon, Settings } from 'lucide-react'
 import {
@@ -7,10 +7,17 @@ import {
 } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { todayKey } from '../lib/date'
-import { SPLIT, DAY_LABELS, COMPOUND_IDS, EXERCISES } from '../lib/data'
-import type { Session, MeasurementEntry, SleepEntry, WorkoutType, Profile } from '../lib/types'
+import { todayKey, dateKey, parseKey } from '../lib/date'
+import { SPLIT, DAY_LABELS, COMPOUND_IDS, EXERCISES, PROTEIN_ITEMS } from '../lib/data'
+import { proteinTargetG } from '../lib/nutrition'
+import { calcStreak, TRAINING_DAYS_PER_WEEK } from '../lib/schedule'
+import { sessionVolume } from '../lib/stats'
+import { sleepDurationH } from '../lib/sleep'
+import { useToast } from '../lib/toast'
+import type { Session, MeasurementEntry, SleepEntry, WorkoutType, Profile, ProteinItem } from '../lib/types'
 import { Card, Pill, Stat, SectionLabel, Divider, EmptyState, Btn } from '../components/ui'
+import { InstallPrompt } from '../components/InstallPrompt'
+import { RoutineSummary } from '../components/RoutineSummary'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -19,31 +26,6 @@ function greeting() {
   if (h < 12) return 'Good morning'
   if (h < 17) return 'Good afternoon'
   return 'Good evening'
-}
-
-function calcStreak(sessions: Session[]): number {
-  const finished = sessions.filter(s => s.finishedAt)
-  if (finished.length === 0) return 0
-
-  let streak = 0
-  let cur = subDays(new Date(), 1)
-  cur.setHours(0, 0, 0, 0)
-
-  for (let i = 0; i < 365; i++) {
-    const dayType = SPLIT[cur.getDay()]
-    if (dayType === 'REST') {
-      cur = subDays(cur, 1)
-      continue
-    }
-    const dateStr = format(cur, 'yyyy-MM-dd')
-    if (finished.some(s => s.date === dateStr)) {
-      streak++
-      cur = subDays(cur, 1)
-    } else {
-      break
-    }
-  }
-  return streak
 }
 
 function fmtSleepTime(h: number | undefined): string {
@@ -80,6 +62,7 @@ function stalledCompound(sessions: Session[], type: WorkoutType) {
 
 export default function Today() {
   const navigate = useNavigate()
+  const toast = useToast()
   const [sessions, setSessions] = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [profile]      = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
@@ -90,11 +73,13 @@ export default function Today() {
   })
 
   const today      = new Date()
-  const todayStr   = format(today, 'yyyy-MM-dd')
-  const ystdayStr  = format(subDays(today, 1), 'yyyy-MM-dd')
+  const todayStr   = dateKey(today)
+  const ystdayStr  = dateKey(subDays(today, 1))
 
-  const [proteinToday] = useLocalStorage<Record<string, boolean>>(KEYS.proteinDay(todayStr), {})
-  const [sleepLast]    = useLocalStorage<SleepEntry>(KEYS.sleepDay(ystdayStr), {})
+  const [proteinToday]  = useLocalStorage<Record<string, boolean>>(KEYS.proteinDay(todayStr), {})
+  const [customProtein] = useLocalStorage<ProteinItem[]>(KEYS.PROTEIN_CUSTOM, [])
+  const [proteinExtra]  = useLocalStorage<ProteinItem[]>(KEYS.proteinExtra(todayStr), [])
+  const [sleepLast]     = useLocalStorage<SleepEntry>(KEYS.sleepDay(ystdayStr), {})
   const [dayOverride, setDayOverride] = useLocalStorage<WorkoutType | 'REST' | null>(KEYS.dayOverride(todayStr), null)
 
   const dayType      = dayOverride ?? SPLIT[today.getDay()]
@@ -109,11 +94,13 @@ export default function Today() {
   const weekStart       = startOfWeek(today, { weekStartsOn: 1 })
   const weekDays        = eachDayOfInterval({ start: weekStart, end: endOfWeek(today, { weekStartsOn: 1 }) })
   const weekSessionCount = sessions.filter(s => {
-    const d = new Date(s.date)
+    const d = parseKey(s.date)
     return !isBefore(d, weekStart) && !isAfter(d, today) && s.finishedAt
   }).length
 
-  const proteinDoneCount = Object.values(proteinToday).filter(Boolean).length
+  const proteinItems  = [...PROTEIN_ITEMS, ...customProtein, ...proteinExtra]
+  const proteinGrams  = proteinItems.filter(it => proteinToday[it.id]).reduce((a, it) => a + (it.grams ?? 0), 0)
+  const proteinTarget = proteinTargetG()
 
   const stall = workoutType ? stalledCompound(sessions, workoutType) : null
 
@@ -137,6 +124,17 @@ export default function Today() {
     }
   })
 
+  // A restore reloads the app; surface the result once we're back on Today.
+  useEffect(() => {
+    const note = sessionStorage.getItem('upkeep:restore-note')
+    if (note) {
+      sessionStorage.removeItem('upkeep:restore-note')
+      toast({ message: note })
+    }
+  }, [toast])
+
+  const sleepHours = sleepDurationH(sleepLast ?? {})
+
   const sleepBedTime = sleepLast?.bed
   const sleepStatus  =
     sleepBedTime == null ? null :
@@ -157,7 +155,20 @@ export default function Today() {
             <div className="flex gap-3">
               <Btn variant="secondary" onClick={() => setDeleteId(null)} className="flex-1">Cancel</Btn>
               <button
-                onClick={() => { setSessions(prev => prev.filter(s => s.id !== deleteId)); setDeleteId(null) }}
+                onClick={() => {
+                  const removed = sessions.find(s => s.id === deleteId)
+                  setSessions(prev => prev.filter(s => s.id !== deleteId))
+                  setDeleteId(null)
+                  if (removed) {
+                    toast({
+                      message: `${removed.type} session deleted.`,
+                      actionLabel: 'Undo',
+                      onAction: () => setSessions(prev =>
+                        prev.some(s => s.id === removed.id) ? prev : [...prev, removed],
+                      ),
+                    })
+                  }
+                }}
                 className="flex-1 flex items-center justify-center px-[18px] py-3.5 rounded-card bg-danger text-accent-text font-sans font-semibold text-[13px] uppercase tracking-[0.04em] border-none cursor-pointer transition-all active:scale-[0.98]"
               >
                 Delete
@@ -181,7 +192,7 @@ export default function Today() {
           aria-label="Settings"
           className="relative w-[38px] h-[38px] rounded-pill bg-[var(--color-accent-soft)] border border-[var(--color-panel-border)] flex items-center justify-center font-mono text-[12px] text-accent font-semibold shrink-0 cursor-pointer transition-transform active:scale-95"
         >
-          {profile?.name ? profile.name.slice(0, 2).toUpperCase() : 'GZ'}
+          {profile?.name ? profile.name.slice(0, 2).toUpperCase() : 'UK'}
           <span className="absolute -bottom-0.5 -right-0.5 w-[15px] h-[15px] rounded-full bg-panel border border-[var(--color-panel-border)] flex items-center justify-center">
             <Settings size={9} strokeWidth={2} className="text-text-dim" />
           </span>
@@ -221,6 +232,8 @@ export default function Today() {
         </div>
       </Card>
 
+      <InstallPrompt />
+
       {/* ── Snapshot ── */}
       <div>
         <SectionLabel right={`WEEK ${format(today, 'w')}`}>Snapshot</SectionLabel>
@@ -228,8 +241,13 @@ export default function Today() {
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <Stat label="Body weight" value={bodyWeight != null ? bodyWeight.toFixed(1) : '–'} unit={bodyWeight != null ? 'KG' : ''} />
             <Stat label="Gym streak"  value={streak} unit={streak !== 1 ? 'DAYS' : 'DAY'} accent />
-            <Stat label="Sessions"    value={`${weekSessionCount}/6`} unit="WK" />
-            <Stat label="Protein"     value={`${proteinDoneCount}/6`} unit="TDY" />
+            <Stat label="Sessions"    value={`${weekSessionCount}/${TRAINING_DAYS_PER_WEEK}`} unit="WK" />
+            <Stat
+              label="Protein"
+              value={proteinGrams}
+              unit={`/ ${proteinTarget} G`}
+              accent={proteinGrams >= proteinTarget}
+            />
           </div>
           {/* week dots */}
           <div className="mt-5 flex justify-between">
@@ -254,6 +272,9 @@ export default function Today() {
           </div>
         </Card>
       </div>
+
+      {/* ── Meds & skincare due today ── */}
+      <RoutineSummary date={todayStr} />
 
       {/* ── Stall alert ── */}
       {stall && (
@@ -282,10 +303,7 @@ export default function Today() {
           <SectionLabel right="LAST 7 DAYS">Recent</SectionLabel>
           <Card noPad>
             {recentSessions.map((s, i) => {
-              const vol = s.exercises.reduce(
-                (acc, ex) => acc + ex.sets.filter(st => st.done).reduce((a, st) => a + st.weight * st.reps, 0),
-                0
-              )
+              const vol = sessionVolume(s)
               const dur = s.finishedAt ? Math.round((s.finishedAt - s.startedAt) / 60000) : null
               return (
                 <div
@@ -298,7 +316,7 @@ export default function Today() {
                   <div className="flex-1 min-w-0">
                     <p className="font-sans text-[13px] text-text font-medium">
                       {s.type}{' '}
-                      <span className="text-text-dim font-normal">· {format(new Date(s.date), 'EEE d MMM')}</span>
+                      <span className="text-text-dim font-normal">· {format(parseKey(s.date), 'EEE d MMM')}</span>
                     </p>
                     <p className="font-mono text-[11px] text-text-dim mt-0.5 tracking-[0.03em]">
                       {Math.round(vol).toLocaleString()} KG VOL{dur ? ` · ${dur} MIN` : ''}
@@ -327,14 +345,21 @@ export default function Today() {
       </button>
 
       {/* ── Sleep last night ── */}
-      <Card className="flex items-center gap-3.5">
+      <Card
+        className="flex items-center gap-3.5"
+        onClick={() => navigate('/daily')}
+      >
         <div className="w-10 h-10 rounded-card bg-panel-inset border border-[var(--color-panel-border)] flex items-center justify-center shrink-0">
           <Moon size={18} strokeWidth={1.6} className="text-text-dim" />
         </div>
-        <div className="flex-1">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Phone away · last night</p>
+        <div className="flex-1 min-w-0">
+          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Last night</p>
           <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em] mt-0.5">
-            {fmtSleepTime(sleepLast?.phone)}
+            {sleepHours != null ? `${sleepHours.toFixed(1)}h` : '—'}
+          </p>
+          <p className="font-mono text-[10px] text-text-dim tracking-[0.04em] mt-0.5">
+            PHONE {fmtSleepTime(sleepLast?.phone)}
+            {sleepLast?.quality != null && ` · RESTED ${sleepLast.quality}/5`}
           </p>
         </div>
         {sleepStatus && (

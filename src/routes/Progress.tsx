@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
-import { format, subDays, eachDayOfInterval } from 'date-fns'
-import { X, BarChart2, Scale } from 'lucide-react'
+import { format, subDays, eachDayOfInterval, startOfWeek } from 'date-fns'
+import { X, Scale } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { SPLIT } from '../lib/data'
+import { dateKey, parseKey } from '../lib/date'
+import { calcStreak, dayTypeFor, TRAINING_DAYS_PER_WEEK } from '../lib/schedule'
 import type { Session, MeasurementEntry } from '../lib/types'
 import { Card, Stat, SectionLabel, PageTitle, Btn, Pill, Divider, EmptyState } from '../components/ui'
-import { BodyStory, StrengthSection } from '../components/Insights'
+import { BodyStory, StrengthSection, MuscleBalance } from '../components/Insights'
 
 // ─── Heatmap ─────────────────────────────────────────────────────────────────
 
@@ -28,16 +29,17 @@ function buildHeatmap(sessions: Session[]): HeatmapCell[] {
     const d = new Date(day)
     d.setHours(0, 0, 0, 0)
     const isToday  = d.getTime() === today.getTime()
-    const dateStr  = format(d, 'yyyy-MM-dd')
-    const dayType  = SPLIT[d.getDay()]
-    const isRest   = dayType === 'REST'
+    const dateStr  = dateKey(d)
+    const isRest   = dayTypeFor(dateStr) === 'REST'
     const isFuture = d > today
 
+    // A logged session outranks the schedule — training on a day you'd marked
+    // as rest must still show up, not vanish into a grey cell.
     let state: CellState
     if (isToday)                           state = 'today'
+    else if (sessionDates.has(dateStr))    state = 'hit'
     else if (isRest)                       state = 'rest'
     else if (isFuture)                     state = 'future'
-    else if (sessionDates.has(dateStr))    state = 'hit'
     else                                   state = 'missed'
 
     return { date: d, state }
@@ -301,32 +303,18 @@ export default function Progress() {
   const missed  = cells.filter(c => c.state === 'missed').length
 
   const today   = new Date()
-  const weekSessions = sessions.filter(s => {
-    const d = new Date(s.date)
-    const weekStart = new Date(today)
-    weekStart.setDate(today.getDate() - today.getDay() + 1)
-    weekStart.setHours(0, 0, 0, 0)
-    return d >= weekStart && s.finishedAt
-  }).length
+  // startOfWeek handles Sunday correctly — the hand-rolled version resolved to
+  // *next* Monday on Sundays and reported zero sessions for the week.
+  const weekStart = startOfWeek(today, { weekStartsOn: 1 })
+  const weekSessions = sessions.filter(s => s.finishedAt && parseKey(s.date) >= weekStart).length
 
   const monthSessions = sessions.filter(s => {
-    const d = new Date(s.date)
+    const d = parseKey(s.date)
     return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear() && s.finishedAt
   }).length
 
-  let streak = 0
-  {
-    const finished = sessions.filter(s => s.finishedAt)
-    let cur = subDays(today, 1)
-    cur.setHours(0, 0, 0, 0)
-    for (let i = 0; i < 365; i++) {
-      const dayType = SPLIT[cur.getDay()]
-      if (dayType === 'REST') { cur = subDays(cur, 1); continue }
-      if (finished.some(s => s.date === format(cur, 'yyyy-MM-dd'))) {
-        streak++; cur = subDays(cur, 1)
-      } else break
-    }
-  }
+  const streak = calcStreak(sessions)
+  const monthTarget = TRAINING_DAYS_PER_WEEK * 4
 
   const sortedMs  = [...measurements].sort((a, b) => a.date.localeCompare(b.date))
   const latestMs  = sortedMs.at(-1)
@@ -334,7 +322,7 @@ export default function Progress() {
     ? (sortedMs.at(-1)!.weight - sortedMs[0].weight).toFixed(1)
     : null
 
-  const tapeMonths = sortedMs.slice(-3).map(m => format(new Date(m.date), 'MMM'))
+  const tapeMonths = sortedMs.slice(-3).map(m => format(parseKey(m.date), 'MMM'))
   const tape3      = sortedMs.slice(-3)
 
   const TAPE_ROWS: { label: string; key: keyof MeasurementEntry['measurements']; waist?: boolean }[] = [
@@ -364,12 +352,15 @@ export default function Progress() {
         {/* ── Strength progression + PRs ── */}
         <StrengthSection sessions={sessions} />
 
+        {/* ── Where the work actually went ── */}
+        <MuscleBalance sessions={sessions} />
+
         {/* ── Streak stats + heatmap ── */}
         <Card>
           <div className="grid grid-cols-3 gap-3 mb-5">
             <Stat label="Streak"   value={streak}              unit="DAYS" accent />
-            <Stat label="This wk"  value={`${weekSessions}/6`}             />
-            <Stat label="This mo"  value={`${monthSessions}/24`}           />
+            <Stat label="This wk"  value={`${weekSessions}/${TRAINING_DAYS_PER_WEEK}`} />
+            <Stat label="This mo"  value={`${monthSessions}/${monthTarget}`}           />
           </div>
 
           <Heatmap cells={cells} />
@@ -393,7 +384,7 @@ export default function Progress() {
 
         {/* ── Body trends ── */}
         <div>
-          <SectionLabel right={sortedMs.length > 1 ? `${format(new Date(sortedMs[0].date), 'MMM')} → ${format(new Date(sortedMs.at(-1)!.date), 'MMM')}` : ''}>
+          <SectionLabel right={sortedMs.length > 1 ? `${format(parseKey(sortedMs[0].date), 'MMM')} → ${format(parseKey(sortedMs.at(-1)!.date), 'MMM')}` : ''}>
             Body
           </SectionLabel>
           {measurements.length === 0 ? (

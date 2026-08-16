@@ -1,11 +1,17 @@
-import { useState } from 'react'
-import { Download, Trash2, Info, ChevronRight, FileJson, FileText, ClipboardList } from 'lucide-react'
-import { format } from 'date-fns'
+import { useRef, useState } from 'react'
+import {
+  Trash2, ChevronRight, FileJson, FileText, ClipboardList,
+  Save, Upload, Timer, Volume2, Zap,
+} from 'lucide-react'
+import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
-import { KEYS } from '../lib/storage'
+import { KEYS, PREFIX } from '../lib/storage'
 import { PageTitle, Card, Divider, Btn } from '../components/ui'
 import { reportToJSON, sessionsToCSV, measurementsToCSV, sleepToCSV, proteinToCSV, buildWeeklyDigest } from '../lib/export'
-import type { Session, MeasurementEntry } from '../lib/types'
+import { backupToJSON, markBackedUp, lastBackupAt, restoreBackup, type RestoreMode } from '../lib/backup'
+import { REST_DEFAULT } from '../lib/restTimer'
+import { useToast } from '../lib/toast'
+import type { Session, MeasurementEntry, Settings as AppSettings } from '../lib/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -18,6 +24,8 @@ function downloadFile(content: string, filename: string, mime: string) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+const REST_CHOICES = [60, 90, 120, 150, 180]
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -51,6 +59,42 @@ function RowItem({
   )
 }
 
+// ─── Toggle ───────────────────────────────────────────────────────────────────
+
+function Toggle({
+  icon: Icon,
+  label,
+  sub,
+  on,
+  onToggle,
+}: {
+  icon: React.ElementType
+  label: string
+  sub?: string
+  on: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      role="switch"
+      aria-checked={on}
+      className="w-full flex items-center gap-2.5 bg-transparent border-none cursor-pointer p-0 text-left"
+    >
+      <Icon size={15} strokeWidth={1.7} className="text-text-dim shrink-0" />
+      <span className="flex-1 min-w-0">
+        <span className="font-sans text-[13px] text-text font-medium block">{label}</span>
+        {sub && <span className="font-sans text-[12px] text-text-dim leading-[16px] block mt-0.5">{sub}</span>}
+      </span>
+      <span
+        className={`w-[42px] h-[24px] rounded-pill shrink-0 flex items-center px-[3px] transition-colors ${on ? 'bg-accent justify-end' : 'bg-panel-inset border border-[var(--color-panel-border)] justify-start'}`}
+      >
+        <span className="w-[18px] h-[18px] rounded-pill bg-text block" />
+      </span>
+    </button>
+  )
+}
+
 // ─── Reset confirm modal ──────────────────────────────────────────────────────
 
 function ResetModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
@@ -59,8 +103,11 @@ function ResetModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: 
       <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
         <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Reset all data?</p>
-        <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-6">
+        <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-4">
           This permanently deletes every session, measurement, sleep log, and protein entry. Cannot be undone.
+        </p>
+        <p className="font-sans text-[12px] text-warn leading-[18px] mb-6">
+          Download a backup first if there's any chance you'll want this data back.
         </p>
         <div className="flex gap-3">
           <Btn variant="secondary" onClick={onCancel} className="flex-1">Cancel</Btn>
@@ -76,14 +123,101 @@ function ResetModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: 
   )
 }
 
+// ─── Restore confirm modal ────────────────────────────────────────────────────
+
+function RestoreModal({
+  filename,
+  onChoose,
+  onCancel,
+}: {
+  filename: string
+  onChoose: (mode: RestoreMode) => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pt-4 pb-24 md:p-4 md:items-center">
+      <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
+        <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-1">Restore backup</p>
+        <p className="font-mono text-[11px] text-text-dim tracking-[0.02em] mb-5 truncate">{filename}</p>
+
+        <button
+          onClick={() => onChoose('merge')}
+          className="w-full text-left px-4 py-3.5 rounded-card bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer mb-2.5"
+        >
+          <p className="font-sans text-[14px] text-text font-medium">Merge</p>
+          <p className="font-sans text-[12px] text-text-dim leading-[17px] mt-0.5">
+            Keeps everything already here and adds only what's missing. Nothing is overwritten.
+          </p>
+        </button>
+
+        <button
+          onClick={() => onChoose('replace')}
+          className="w-full text-left px-4 py-3.5 rounded-card bg-transparent border border-danger/40 cursor-pointer mb-5"
+        >
+          <p className="font-sans text-[14px] text-danger font-medium">Replace everything</p>
+          <p className="font-sans text-[12px] text-text-dim leading-[17px] mt-0.5">
+            Wipes current data first, then restores the backup exactly as saved.
+          </p>
+        </button>
+
+        <Btn variant="secondary" fullWidth onClick={onCancel}>Cancel</Btn>
+      </div>
+    </div>
+  )
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function Settings() {
+  const toast = useToast()
   const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
+  const [settings, setSettings] = useLocalStorage<AppSettings>(KEYS.SETTINGS, { theme: 'vault' })
   const [showReset, setShowReset] = useState(false)
   const [exported, setExported]   = useState<'json' | 'csv' | null>(null)
   const [digestDone, setDigestDone] = useState(false)
+  const [pending, setPending] = useState<{ name: string; text: string } | null>(null)
+  const [backupAt, setBackupAt] = useState<number | null>(() => lastBackupAt())
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const restSeconds = settings.restSeconds ?? REST_DEFAULT
+  const restSound   = settings.restSound !== false
+  const restAuto    = settings.restAuto === true
+
+  function handleBackup() {
+    downloadFile(backupToJSON(), `upkeep-backup-${format(new Date(), 'yyyy-MM-dd')}.json`, 'application/json')
+    markBackedUp()
+    setBackupAt(Date.now())
+    toast({ message: 'Backup downloaded. Keep it somewhere off this device.' })
+  }
+
+  async function handleFilePicked(file: File | undefined) {
+    if (!file) return
+    try {
+      setPending({ name: file.name, text: await file.text() })
+    } catch {
+      toast({ message: "Couldn't read that file." })
+    }
+  }
+
+  function handleRestore(mode: RestoreMode) {
+    if (!pending) return
+    try {
+      const r = restoreBackup(pending.text, mode)
+      setPending(null)
+      const parts = [
+        `${r.sessions} session${r.sessions === 1 ? '' : 's'}`,
+        `${r.measurements} measurement${r.measurements === 1 ? '' : 's'}`,
+      ]
+      // Reload so every screen re-reads storage from scratch.
+      sessionStorage.setItem('upkeep:restore-note', `Restored ${parts.join(' and ')}.`)
+      window.location.href = '/today'
+    } catch (err) {
+      setPending(null)
+      toast({ message: err instanceof Error ? err.message : 'Restore failed.' })
+    }
+  }
 
   async function handleDigest() {
     const text = buildWeeklyDigest()
@@ -92,7 +226,7 @@ export default function Settings() {
       setDigestDone(true)
       setTimeout(() => setDigestDone(false), 2000)
     } catch {
-      downloadFile(text, `gainz-digest-${format(new Date(), 'yyyy-MM-dd')}.md`, 'text/markdown')
+      downloadFile(text, `upkeep-digest-${format(new Date(), 'yyyy-MM-dd')}.md`, 'text/markdown')
     }
   }
 
@@ -101,7 +235,7 @@ export default function Settings() {
   const firstDate        = sessions.length ? format(new Date(Math.min(...sessions.map(s => s.startedAt))), 'MMM yyyy') : null
 
   function handleExportJSON() {
-    downloadFile(reportToJSON(), `gainz-report-${format(new Date(), 'yyyy-MM-dd')}.json`, 'application/json')
+    downloadFile(reportToJSON(), `upkeep-report-${format(new Date(), 'yyyy-MM-dd')}.json`, 'application/json')
     setExported('json')
     setTimeout(() => setExported(null), 2000)
   }
@@ -109,10 +243,10 @@ export default function Settings() {
   function handleExportCSV() {
     const date = format(new Date(), 'yyyy-MM-dd')
     const files = [
-      { name: `gainz-sessions-${date}.csv`,     content: sessionsToCSV(sessions)    },
-      { name: `gainz-measurements-${date}.csv`,  content: measurementsToCSV(measurements) },
-      { name: `gainz-sleep-${date}.csv`,          content: sleepToCSV()               },
-      { name: `gainz-protein-${date}.csv`,        content: proteinToCSV()             },
+      { name: `upkeep-sessions-${date}.csv`,     content: sessionsToCSV(sessions)    },
+      { name: `upkeep-measurements-${date}.csv`,  content: measurementsToCSV(measurements) },
+      { name: `upkeep-sleep-${date}.csv`,          content: sleepToCSV()               },
+      { name: `upkeep-protein-${date}.csv`,        content: proteinToCSV()             },
     ]
     files.forEach((f, i) => {
       setTimeout(() => downloadFile(f.content, f.name, 'text/csv'), i * 350)
@@ -122,8 +256,8 @@ export default function Settings() {
   }
 
   function handleReset() {
-    // Wipe all gainz: keys
-    const toDelete = Object.keys(localStorage).filter(k => k.startsWith('gainz:'))
+    // Wipe every key this app owns, including any left under the old name
+    const toDelete = Object.keys(localStorage).filter(k => k.startsWith(PREFIX) || k.startsWith('gainz:'))
     toDelete.forEach(k => localStorage.removeItem(k))
     setShowReset(false)
     // Reload to reinitialise state
@@ -147,6 +281,87 @@ export default function Settings() {
               <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em] mt-1">{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* ── Backup ── */}
+        <div>
+          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
+            Backup
+          </p>
+          <Card noPad>
+            <RowItem
+              icon={Save}
+              label="Download backup"
+              sub={backupAt ? `Last backup ${formatDistanceToNowStrict(backupAt)} ago` : 'Never backed up'}
+              onClick={handleBackup}
+            />
+            <Divider />
+            <RowItem
+              icon={Upload}
+              label="Restore from backup"
+              sub="Merge into what's here, or replace it"
+              onClick={() => fileRef.current?.click()}
+            />
+          </Card>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={e => { void handleFilePicked(e.target.files?.[0]); e.target.value = '' }}
+          />
+          {!backupAt && sessions.length > 0 && (
+            <p className="font-sans text-[12px] text-warn leading-[17px] px-1 mt-2">
+              Everything lives in this browser's storage. Clearing site data wipes it — keep a backup file.
+            </p>
+          )}
+        </div>
+
+        {/* ── Rest timer ── */}
+        <div>
+          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
+            Rest timer
+          </p>
+          <Card>
+            <div className="flex items-center gap-2.5 mb-1">
+              <Timer size={15} strokeWidth={1.7} className="text-text-dim shrink-0" />
+              <span className="font-sans text-[13px] text-text font-medium flex-1">Rest length</span>
+            </div>
+            <p className="font-sans text-[12px] text-text-dim leading-[17px] mb-3">
+              Start it yourself from the workout screen whenever you want it.
+            </p>
+            <div className="flex gap-1.5">
+              {REST_CHOICES.map(secs => (
+                <button
+                  key={secs}
+                  onClick={() => setSettings(prev => ({ ...prev, restSeconds: secs }))}
+                  className={[
+                    'flex-1 py-2 rounded-card border font-mono text-[12px] font-medium cursor-pointer transition-colors',
+                    secs === restSeconds
+                      ? 'bg-[var(--color-accent-soft)] border-accent text-accent'
+                      : 'bg-panel-inset border-[var(--color-panel-border)] text-text-dim',
+                  ].join(' ')}
+                >
+                  {secs < 120 ? `${secs}s` : `${secs / 60}m`}
+                </button>
+              ))}
+            </div>
+            <Divider className="my-3.5" />
+            <Toggle
+              icon={Zap}
+              label="Auto-start after each set"
+              sub="Off suits logging a whole exercise at once, or catching up later"
+              on={restAuto}
+              onToggle={() => setSettings(prev => ({ ...prev, restAuto: !restAuto }))}
+            />
+            <Divider className="my-3.5" />
+            <Toggle
+              icon={Volume2}
+              label="Chime when rest ends"
+              on={restSound}
+              onToggle={() => setSettings(prev => ({ ...prev, restSound: !restSound }))}
+            />
+          </Card>
         </div>
 
         {/* ── Share ── */}
@@ -202,10 +417,10 @@ export default function Settings() {
           <Card>
             <div className="flex items-center gap-3.5">
               <div className="w-10 h-10 rounded-[12px] bg-accent flex items-center justify-center shrink-0">
-                <span className="font-mono font-bold text-[13px] text-accent-text leading-none">GZ</span>
+                <span className="font-mono font-bold text-[13px] text-accent-text leading-none">UK</span>
               </div>
               <div>
-                <p className="font-serif text-[16px] text-text font-medium tracking-[-0.02em]">GainZ</p>
+                <p className="font-serif text-[16px] text-text font-medium tracking-[-0.02em]">Upkeep</p>
                 <p className="font-mono text-[11px] text-text-dim tracking-[0.02em] mt-0.5">v0.1.0 · Offline · PWA</p>
               </div>
             </div>
@@ -230,6 +445,14 @@ export default function Settings() {
         <ResetModal
           onConfirm={handleReset}
           onCancel={() => setShowReset(false)}
+        />
+      )}
+
+      {pending && (
+        <RestoreModal
+          filename={pending.name}
+          onChoose={handleRestore}
+          onCancel={() => setPending(null)}
         />
       )}
     </>

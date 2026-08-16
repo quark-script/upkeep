@@ -1,8 +1,9 @@
-import { format } from 'date-fns'
+import { format, startOfWeek } from 'date-fns'
 import { Trophy, Activity } from 'lucide-react'
-import { EXERCISES, COMPOUND_IDS } from '../lib/data'
+import { EXERCISES, COMPOUND_IDS, MUSCLE_LABELS } from '../lib/data'
 import { parseKey } from '../lib/date'
-import type { Session, MeasurementEntry, ExerciseLog } from '../lib/types'
+import { bestE1RM, latestBodyWeightKg, logUnit, setVolume } from '../lib/stats'
+import type { Session, MeasurementEntry, ExerciseLog, MuscleGroup } from '../lib/types'
 import { Card, SectionLabel, Pill, Divider } from './ui'
 
 // ─── Shared ───────────────────────────────────────────────────────────────────
@@ -10,11 +11,6 @@ import { Card, SectionLabel, Pill, Divider } from './ui'
 const NAME_BY_ID = new Map(EXERCISES.map(e => [e.id, e.name]))
 function exName(log: ExerciseLog): string {
   return log.name ?? NAME_BY_ID.get(log.exerciseId) ?? log.exerciseId
-}
-
-// Epley estimated 1-rep max from a working set.
-function e1rm(weight: number, reps: number): number {
-  return weight * (1 + reps / 30)
 }
 
 function Spark({ data, color = '#B0413E' }: { data: number[]; color?: string }) {
@@ -180,24 +176,21 @@ export function BodyStory({ ms }: { ms: MeasurementEntry[] }) {
 
 // ─── Strength progression + PR timeline ─────────────────────────────────────────
 
-function topE1RM(s: Session, exId: string): number | null {
+function topE1RM(s: Session, exId: string, bw: number): number | null {
   const ex = s.exercises.find(e => e.exerciseId === exId)
-  const done = ex?.sets.filter(st => st.done) ?? []
-  if (done.length === 0) return null
-  return Math.max(...done.map(st => e1rm(st.weight, st.reps)))
+  return ex ? bestE1RM(ex, bw) : null
 }
 
 interface PREvent { date: string; name: string; value: number }
 
-function prTimeline(sessions: Session[]): PREvent[] {
+function prTimeline(sessions: Session[], bw: number): PREvent[] {
   const finished = sessions.filter(s => s.finishedAt).sort((a, b) => a.startedAt - b.startedAt)
   const best: Record<string, number> = {}
   const events: PREvent[] = []
   for (const s of finished) {
     for (const ex of s.exercises) {
-      const done = ex.sets.filter(st => st.done)
-      if (done.length === 0) continue
-      const v = Math.max(...done.map(st => e1rm(st.weight, st.reps)))
+      const v = bestE1RM(ex, bw)
+      if (v == null) continue
       const prev = best[ex.exerciseId]
       if (prev == null) { best[ex.exerciseId] = v; continue }   // first time isn't a PR
       if (v > prev + 0.5) {
@@ -211,17 +204,18 @@ function prTimeline(sessions: Session[]): PREvent[] {
 
 export function StrengthSection({ sessions }: { sessions: Session[] }) {
   const finished = sessions.filter(s => s.finishedAt).sort((a, b) => a.startedAt - b.startedAt)
+  const bw = latestBodyWeightKg()
 
   const lifts = [...COMPOUND_IDS]
     .map(id => {
       const series = finished
-        .map(s => topE1RM(s, id))
+        .map(s => topE1RM(s, id, bw))
         .filter((v): v is number => v != null)
       return { id, name: NAME_BY_ID.get(id) ?? id, series }
     })
     .filter(l => l.series.length > 0)
 
-  const prs = prTimeline(sessions)
+  const prs = prTimeline(sessions, bw)
 
   if (lifts.length === 0 && prs.length === 0) return null
 
@@ -289,5 +283,93 @@ export function StrengthSection({ sessions }: { sessions: Session[] }) {
         </Card>
       )}
     </>
+  )
+}
+
+// ─── Muscle-group balance ───────────────────────────────────────────────────────
+
+const GROUP_BY_ID = new Map<string, MuscleGroup[]>(
+  EXERCISES.filter(e => e.groups?.length).map(e => [e.id, e.groups!]),
+)
+
+const GROUP_ORDER: MuscleGroup[] = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core']
+
+const BALANCE_WEEKS = 4
+
+// Where the work actually went over the last few weeks. Catches the classic
+// drift — chest and arms every session, legs and core quietly skipped.
+export function MuscleBalance({ sessions }: { sessions: Session[] }) {
+  const bw = latestBodyWeightKg()
+  const start = startOfWeek(new Date(), { weekStartsOn: 1 })
+  start.setDate(start.getDate() - 7 * (BALANCE_WEEKS - 1))
+
+  const totals = new Map<MuscleGroup, { volume: number; sets: number }>(
+    GROUP_ORDER.map(g => [g, { volume: 0, sets: 0 }]),
+  )
+  let anyWork = false
+
+  for (const s of sessions) {
+    if (!s.finishedAt || parseKey(s.date) < start) continue
+    for (const ex of s.exercises) {
+      const groups = GROUP_BY_ID.get(ex.exerciseId)
+      if (!groups) continue                       // custom lift — no group mapping
+      const unit = logUnit(ex)
+      const done = ex.sets.filter(st => st.done)
+      if (done.length === 0) continue
+      const volume = done.reduce((a, st) => a + setVolume(st, unit, bw), 0)
+      anyWork = true
+      for (const g of groups) {
+        const t = totals.get(g)!
+        t.volume += volume / groups.length
+        t.sets += done.length / groups.length
+      }
+    }
+  }
+
+  if (!anyWork) return null
+
+  const rows = GROUP_ORDER.map(g => ({ group: g, ...totals.get(g)! }))
+  const maxSets = Math.max(...rows.map(r => r.sets), 1)
+  const worked = rows.filter(r => r.sets > 0)
+  const laggard = worked.length === GROUP_ORDER.length
+    ? rows.reduce((min, r) => (r.sets < min.sets ? r : min))
+    : rows.find(r => r.sets === 0) ?? null
+
+  return (
+    <div>
+      <SectionLabel right={`LAST ${BALANCE_WEEKS} WEEKS`}>Balance</SectionLabel>
+      <Card>
+        <div className="flex flex-col gap-2.5">
+          {rows.map(r => {
+            const pct = (r.sets / maxSets) * 100
+            const lagging = laggard?.group === r.group
+            return (
+              <div key={r.group} className="flex items-center gap-2.5">
+                <span className="font-sans text-[12px] text-text-dim w-[68px] shrink-0">
+                  {MUSCLE_LABELS[r.group]}
+                </span>
+                <div className="flex-1 h-[6px] rounded-pill bg-panel-inset overflow-hidden">
+                  <div
+                    className="h-full rounded-pill transition-all"
+                    style={{ width: `${pct}%`, background: lagging ? '#D5A45F' : '#B0413E' }}
+                  />
+                </div>
+                <span className="font-mono text-[11px] text-text-dim tracking-[-0.01em] w-[54px] text-right shrink-0">
+                  {Math.round(r.sets)} sets
+                </span>
+              </div>
+            )
+          })}
+        </div>
+        {laggard && (
+          <p className="font-sans text-[12px] text-text-dim leading-[18px] mt-3.5 pt-3 border-t border-[var(--color-divider)]">
+            <span className="text-warn font-medium">{MUSCLE_LABELS[laggard.group]}</span>{' '}
+            {laggard.sets === 0
+              ? `had no logged sets in ${BALANCE_WEEKS} weeks.`
+              : `is your least-trained group — ${Math.round(laggard.sets)} sets in ${BALANCE_WEEKS} weeks.`}
+          </p>
+        )}
+      </Card>
+    </div>
   )
 }

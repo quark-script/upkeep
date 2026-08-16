@@ -13,9 +13,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'GainZ',
-        short_name: 'GainZ',
-        description: 'Personal Push/Pull/Legs gym tracker',
+        name: 'Upkeep',
+        short_name: 'Upkeep',
+        description: 'Personal tracker for training, food, sleep, medicines and skincare',
         theme_color: '#0E0E10',
         background_color: '#0E0E10',
         display: 'standalone',

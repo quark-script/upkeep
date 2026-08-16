@@ -1,29 +1,23 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { format } from 'date-fns'
-import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight, Pencil, Search, X, StickyNote } from 'lucide-react'
+import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight, Pencil, Search, X, StickyNote, LineChart, Minus } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { EXERCISES, SPLIT, COMPOUND_IDS, DAY_LABELS } from '../lib/data'
+import { EXERCISES, COMPOUND_IDS, DAY_LABELS } from '../lib/data'
 import { useLogDate } from '../lib/dateContext'
+import { useRestTimer, restAutoStart } from '../lib/restTimer'
 import { todayKey, parseKey } from '../lib/date'
-import type { Session, WorkoutType, LiveSet, LiveLog, WorkoutDraft, Exercise } from '../lib/types'
+import { workoutTypeFor } from '../lib/schedule'
+import { setVolume, latestBodyWeightKg, stepFor, unitLabels, formatSet } from '../lib/stats'
+import type {
+  Session, WorkoutType, LiveSet, LiveLog, WorkoutDraft, Exercise, ExerciseLog, LoadUnit,
+} from '../lib/types'
 import { Card, Pill, Btn, Divider } from '../components/ui'
 import { DateStrip } from '../components/DateStrip'
+import { ExerciseHistorySheet } from '../components/ExerciseHistory'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getTypeForDate(dateStr: string): WorkoutType {
-  try {
-    const override = localStorage.getItem(KEYS.dayOverride(dateStr))
-    if (override) {
-      const v = JSON.parse(override) as WorkoutType | 'REST'
-      if (v && v !== 'REST') return v
-    }
-  } catch {}
-  const t = SPLIT[parseKey(dateStr).getDay()]
-  return t === 'REST' ? 'PUSH' : t
-}
 
 // Default per-day session — excludes optional (picker-only) lifts.
 function getExercisesForDay(type: WorkoutType) {
@@ -37,71 +31,72 @@ function libraryForDay(type: WorkoutType): Exercise[] {
   return [...day, ...others]
 }
 
-function getLastSets(
-  sessions: Session[],
-  type: WorkoutType,
-  exerciseId: string
-): { w: number; r: number } {
-  const sorted = sessions
-    .filter(s => s.type === type && s.finishedAt !== null)
+// Every past appearance of a lift, newest first. Deliberately not filtered by
+// workout type — a lift you moved to another day still carries its history.
+function pastLogs(sessions: Session[], exerciseId: string): { session: Session; log: ExerciseLog }[] {
+  return sessions
+    .filter(s => s.finishedAt !== null)
     .sort((a, b) => b.startedAt - a.startedAt)
+    .map(s => {
+      const log = s.exercises.find(e => e.exerciseId === exerciseId)
+      return log ? { session: s, log } : null
+    })
+    .filter((x): x is { session: Session; log: ExerciseLog } => x !== null)
+}
 
-  for (const s of sorted) {
-    const ex = s.exercises.find(e => e.exerciseId === exerciseId)
-    const doneSets = ex?.sets.filter(st => st.done) ?? []
-    if (doneSets.length > 0) {
-      const top = doneSets.reduce((best, st) => st.weight > best.weight ? st : best)
-      return { w: top.weight, r: top.reps }
-    }
-  }
+// Starting numbers for a lift the app has never seen logged.
+function blankSet(unit: LoadUnit): { w: number; r: number } {
+  if (unit === 'time') return { w: 0, r: 30 }
+  if (unit === 'bodyweight') return { w: 0, r: 8 }
   return { w: 20, r: 10 }
 }
 
 // Seed a fresh exercise with a progressive-overload suggestion: if every set
 // was completed last time, pre-fill the next target a small step heavier.
-function defaultSetsFor(ex: Exercise, sessions: Session[], type: WorkoutType): LiveSet[] {
-  const sorted = sessions
-    .filter(s => s.type === type && s.finishedAt !== null)
-    .sort((a, b) => b.startedAt - a.startedAt)
+// Timed holds progress on duration instead of load.
+function defaultSetsFor(ex: Exercise, sessions: Session[]): LiveSet[] {
+  const unit = ex.unit ?? 'kg'
+  const step = stepFor(unit, ex.category)
 
-  for (const s of sorted) {
-    const el = s.exercises.find(e => e.exerciseId === ex.id)
-    const done = el?.sets.filter(st => st.done) ?? []
-    if (done.length > 0) {
-      const top = done.reduce((best, st) => (st.weight > best.weight ? st : best))
-      const allDone = el!.sets.length > 0 && el!.sets.every(st => st.done)
-      const inc = ex.category === 'compound' ? 2.5 : 1.25
-      const targetW = allDone ? top.weight + inc : top.weight
-      return Array.from({ length: ex.defaultSets }, () => ({
-        done: false, expW: top.weight, expR: top.reps, actW: targetW, actR: top.reps,
-      }))
-    }
+  for (const { log } of pastLogs(sessions, ex.id)) {
+    const done = log.sets.filter(st => st.done)
+    if (done.length === 0) continue
+    const top = done.reduce((best, st) => (st.weight > best.weight ? st : best))
+    const allDone = log.sets.length > 0 && log.sets.every(st => st.done)
+    const targetW = allDone && unit !== 'time' ? top.weight + step.load : top.weight
+    const targetR = allDone && unit === 'time' ? top.reps + step.count : top.reps
+    // Row count comes from the plan, not from last time. Inheriting it would
+    // ratchet: add two extra sets once, fail to complete them, and every future
+    // session is seeded with those rows — which `allDone` then never satisfies,
+    // stalling progression permanently.
+    return Array.from({ length: ex.defaultSets }, () => ({
+      done: false, expW: top.weight, expR: top.reps, actW: targetW, actR: targetR,
+    }))
   }
+
+  const b = blankSet(unit)
   return Array.from({ length: ex.defaultSets }, () => ({
-    done: false, expW: 20, expR: 10, actW: 20, actR: 10,
+    done: false, expW: b.w, expR: b.r, actW: b.w, actR: b.r,
   }))
 }
 
-function isStalled(
-  sessions: Session[],
-  type: WorkoutType,
-  exerciseId: string
-): boolean {
+// Three sessions at an identical top weight = the lift has stopped moving.
+function isStalled(sessions: Session[], exerciseId: string): boolean {
   if (!COMPOUND_IDS.has(exerciseId)) return false
-  const past = sessions
-    .filter(s => s.type === type && s.finishedAt !== null)
-    .sort((a, b) => b.startedAt - a.startedAt)
+  const weights = pastLogs(sessions, exerciseId)
     .slice(0, 3)
-  if (past.length < 3) return false
-  const weights = past
-    .map(s => {
-      const ex = s.exercises.find(e => e.exerciseId === exerciseId)
-      if (!ex || ex.sets.length === 0) return null
-      return Math.max(...ex.sets.map(set => set.weight))
+    .map(({ log }) => {
+      const done = log.sets.filter(st => st.done)
+      return done.length ? Math.max(...done.map(st => st.weight)) : null
     })
     .filter((w): w is number => w !== null)
   if (weights.length < 3) return false
   return weights[0] === weights[1] && weights[1] === weights[2]
+}
+
+// A set beats the expectation if it moved more load, or matched it for more reps.
+function beatsExpected(s: LiveSet): boolean {
+  return s.actW > s.expW || (s.actW === s.expW && s.actR > s.expR)
 }
 
 function fmtElapsed(seconds: number): string {
@@ -109,8 +104,6 @@ function fmtElapsed(seconds: number): string {
   const s = seconds % 60
   return `${m}:${String(s).padStart(2, '0')}`
 }
-
-const REST_DEFAULT = 90  // seconds
 
 // ─── NumField ─────────────────────────────────────────────────────────────────
 
@@ -142,10 +135,32 @@ function NumField({
           if (!isNaN(n)) onChange(n)
         }}
         onFocus={e => e.target.select()}
-        style={{ width: '3.4ch' }}
+        // Grows with the value — a fixed width clipped decimals like "72.5".
+        style={{ width: `${Math.max(2.4, raw.length + 0.5)}ch` }}
         className={`bg-transparent border-none outline-none p-0 m-0 font-mono text-[18px] font-medium tracking-[-0.02em] text-left ${done ? 'text-accent' : 'text-text'}`}
       />
-      <span className="font-mono text-[10px] text-text-dim tracking-[0.04em]">{suffix}</span>
+      {suffix && <span className="font-mono text-[10px] text-text-dim tracking-[0.04em]">{suffix}</span>}
+    </div>
+  )
+}
+
+// ─── Stepper ──────────────────────────────────────────────────────────────────
+// Typing "62.5" mid-set is the slowest moment in the app; one tap beats a keypad.
+
+function Stepper({ onDec, onInc, label }: { onDec: () => void; onInc: () => void; label: string }) {
+  const btn =
+    'w-7 h-7 rounded-card bg-panel-inset border border-[var(--color-panel-border)] flex items-center justify-center cursor-pointer transition-transform active:scale-90 shrink-0'
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={onDec} className={btn} aria-label={`Decrease by ${label}`}>
+        <Minus size={12} strokeWidth={2.2} className="text-text-dim" />
+      </button>
+      <span className="font-mono text-[9px] text-text-faint uppercase tracking-[0.04em] min-w-[26px] text-center">
+        {label}
+      </span>
+      <button onClick={onInc} className={btn} aria-label={`Increase by ${label}`}>
+        <Plus size={12} strokeWidth={2.2} className="text-text-dim" />
+      </button>
     </div>
   )
 }
@@ -155,62 +170,94 @@ function NumField({
 function SetRow({
   idx,
   state,
+  unit,
+  step,
+  active,
   onUpdate,
   onLog,
   onUnlog,
 }: {
   idx: number
   state: LiveSet
+  unit: LoadUnit
+  step: { load: number; count: number }
+  active: boolean
   onUpdate: (s: LiveSet) => void
   onLog: () => void
   onUnlog: () => void
 }) {
   const { done } = state
+  const isTime = unit === 'time'
+  const labels = unitLabels(unit)
   const dW = state.actW - state.expW
   const dR = state.actR - state.expR
   const hasDelta = done && (dW !== 0 || dR !== 0)
   const deltaPos = dW > 0 || (dW === 0 && dR > 0)
+  const cols = isTime ? '28px 1fr 60px 44px' : '28px 1fr 1fr 60px 44px'
+
+  const bump = (field: 'actW' | 'actR', delta: number) =>
+    onUpdate({ ...state, [field]: Math.max(0, +(state[field] + delta).toFixed(2)) })
 
   return (
-    <div
-      className={`grid items-center gap-2 px-3.5 py-2.5 transition-colors ${idx > 0 ? 'border-t border-[var(--color-divider)]' : ''} ${done ? 'bg-[var(--color-accent-soft)]' : ''}`}
-      style={{ gridTemplateColumns: '28px 1fr 1fr 60px 44px' }}
-    >
-      <span className="font-mono text-[11px] text-text-dim tracking-[0.06em]">
-        {String(idx + 1).padStart(2, '0')}
-      </span>
+    <div className={`transition-colors ${idx > 0 ? 'border-t border-[var(--color-divider)]' : ''} ${done ? 'bg-[var(--color-accent-soft)]' : ''}`}>
+      <div className="grid items-center gap-2 px-3.5 py-2.5" style={{ gridTemplateColumns: cols }}>
+        <span className="font-mono text-[11px] text-text-dim tracking-[0.06em]">
+          {String(idx + 1).padStart(2, '0')}
+        </span>
 
-      <NumField value={state.actW} suffix="KG"   done={done} onChange={v => onUpdate({ ...state, actW: v })} />
-      <NumField value={state.actR} suffix="REPS" done={done} onChange={v => onUpdate({ ...state, actR: v })} />
-
-      <div
-        className={`text-right font-mono text-[10px] tracking-[0.04em] ${
-          !done ? 'text-text-faint' : hasDelta ? (deltaPos ? 'text-accent' : 'text-warn') : 'text-text-dim'
-        }`}
-      >
-        {!done ? (
-          <span>↳ {state.expW}×{state.expR}</span>
-        ) : hasDelta ? (
-          <>
-            {dW !== 0 && <span>{dW > 0 ? '+' : ''}{dW}<span className="opacity-70">kg</span></span>}
-            {dW !== 0 && dR !== 0 && <span> · </span>}
-            {dR !== 0 && <span>{dR > 0 ? '+' : ''}{dR}r</span>}
-          </>
-        ) : (
-          <span>= last</span>
+        {!isTime && (
+          <NumField value={state.actW} suffix={labels.load} done={done} onChange={v => onUpdate({ ...state, actW: v })} />
         )}
+        <NumField value={state.actR} suffix={labels.count} done={done} onChange={v => onUpdate({ ...state, actR: v })} />
+
+        <div
+          className={`text-right font-mono text-[10px] tracking-[0.04em] ${
+            !done ? 'text-text-faint' : hasDelta ? (deltaPos ? 'text-accent' : 'text-warn') : 'text-text-dim'
+          }`}
+        >
+          {!done ? (
+            <span>↳ {isTime ? `${state.expR}s` : `${state.expW}×${state.expR}`}</span>
+          ) : hasDelta ? (
+            <>
+              {dW !== 0 && <span>{dW > 0 ? '+' : ''}{dW}<span className="opacity-70">kg</span></span>}
+              {dW !== 0 && dR !== 0 && <span> · </span>}
+              {dR !== 0 && <span>{dR > 0 ? '+' : ''}{dR}{isTime ? 's' : 'r'}</span>}
+            </>
+          ) : (
+            <span>= last</span>
+          )}
+        </div>
+
+        <button
+          onClick={() => (done ? onUnlog() : onLog())}
+          aria-label={done ? `Unlog set ${idx + 1}` : `Log set ${idx + 1}`}
+          className={`w-8 h-8 rounded-card flex items-center justify-center justify-self-end transition-colors ${done ? 'bg-accent' : 'bg-transparent border border-[var(--color-panel-border)]'}`}
+        >
+          {done && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 6l3 3 5-5" stroke="#EDEAE3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
       </div>
 
-      <button
-        onClick={() => (done ? onUnlog() : onLog())}
-        className={`w-8 h-8 rounded-card flex items-center justify-center justify-self-end transition-colors ${done ? 'bg-accent' : 'bg-transparent border border-[var(--color-panel-border)]'}`}
-      >
-        {done && (
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="#EDEAE3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
+      {/* Steppers ride on the set you're about to do — no clutter on the rest. */}
+      {active && !done && (
+        <div className="flex items-center gap-3 pl-[46px] pr-3.5 pb-2.5 -mt-0.5 flex-wrap">
+          {!isTime && (
+            <Stepper
+              label={String(step.load)}
+              onDec={() => bump('actW', -step.load)}
+              onInc={() => bump('actW', step.load)}
+            />
+          )}
+          <Stepper
+            label={isTime ? `${step.count}s` : `${step.count} rep`}
+            onDec={() => bump('actR', -step.count)}
+            onInc={() => bump('actR', step.count)}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -228,6 +275,7 @@ function ExerciseCard({
   onUnlog,
   onAddSet,
   onSkip,
+  onHistory,
   stalled,
   note,
   onNote,
@@ -242,17 +290,25 @@ function ExerciseCard({
   onUnlog: (i: number) => void
   onAddSet: () => void
   onSkip: () => void
+  onHistory: () => void
   stalled: boolean
   note: string
   onNote: (v: string) => void
 }) {
+  const unit = exercise.unit ?? 'kg'
+  const isTime = unit === 'time'
+  const step = stepFor(unit, exercise.category)
   const completedCount = sets.filter(s => s.done).length
   const allDone = sets.length > 0 && completedCount === sets.length
-  const pr = sets.some(s => s.done && s.actW > s.expW)
-  const lastW = sets[0]?.expW ?? '–'
-  const lastR = sets[0]?.expR ?? '–'
-  const targetUp = completedCount === 0 && !!sets[0] && sets[0].actW > sets[0].expW
-  const targetInc = targetUp ? +(sets[0].actW - sets[0].expW).toFixed(2) : 0
+  const pr = sets.some(s => s.done && beatsExpected(s))
+  const activeIdx = sets.findIndex(s => !s.done)
+  const last = sets[0]
+    ? formatSet({ weight: sets[0].expW, reps: sets[0].expR, done: true }, unit)
+    : '–'
+  const targetUp = completedCount === 0 && !!sets[0] && (isTime ? sets[0].actR > sets[0].expR : sets[0].actW > sets[0].expW)
+  const targetInc = !targetUp ? 0
+    : isTime ? sets[0].actR - sets[0].expR
+    : +(sets[0].actW - sets[0].expW).toFixed(2)
 
   return (
     <div
@@ -279,19 +335,28 @@ function ExerciseCard({
             </span>
             {stalled && <Pill color="warn">STALLED · 3</Pill>}
             {pr && <Pill color="accent">NEW PR</Pill>}
-            {targetUp && <Pill color="success">TARGET +{targetInc}KG</Pill>}
+            {targetUp && <Pill color="success">TARGET +{targetInc}{isTime ? 'S' : 'KG'}</Pill>}
             {note.trim() && <Pill color="dim">NOTE</Pill>}
           </div>
           <div className="flex items-center gap-3 mt-1 font-mono text-[11px] text-text-dim tracking-[0.04em]">
             <span>{exercise.defaultSets} × {exercise.defaultReps}</span>
             <span className="opacity-40">·</span>
-            <span>LAST: {lastW} KG × {lastR}</span>
+            <span>LAST: {last}</span>
           </div>
         </div>
 
-        <span className="font-mono text-[13px] text-text-dim font-medium tracking-[0.04em] pt-0.5 shrink-0">
-          {completedCount}/{sets.length}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+          <span className="font-mono text-[13px] text-text-dim font-medium tracking-[0.04em]">
+            {completedCount}/{sets.length}
+          </span>
+          <button
+            onClick={e => { e.stopPropagation(); onHistory() }}
+            aria-label={`History for ${exercise.name}`}
+            className="w-7 h-7 rounded-card flex items-center justify-center bg-transparent border-none cursor-pointer text-text-faint hover:text-text transition-colors"
+          >
+            <LineChart size={14} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
 
       {/* ── Expanded sets ── */}
@@ -299,15 +364,17 @@ function ExerciseCard({
         <div className="border-t border-[var(--color-divider)]">
           <div
             className="grid items-center gap-2 px-3.5 py-2 font-mono text-[9px] text-text-faint uppercase tracking-[0.08em]"
-            style={{ gridTemplateColumns: '28px 1fr 1fr 60px 44px' }}
+            style={{ gridTemplateColumns: isTime ? '28px 1fr 60px 44px' : '28px 1fr 1fr 60px 44px' }}
           >
-            <span>Set</span><span>Weight</span><span>Reps</span>
+            <span>Set</span>
+            {!isTime && <span>Weight</span>}
+            <span>{isTime ? 'Hold' : 'Reps'}</span>
             <span className="text-right">vs last</span><span />
           </div>
 
           {sets.map((s, i) => (
             <SetRow
-              key={i} idx={i} state={s}
+              key={i} idx={i} state={s} unit={unit} step={step} active={i === activeIdx}
               onUpdate={ns => onUpdateSet(i, ns)}
               onLog={() => onLog(i)}
               onUnlog={() => onUnlog(i)}
@@ -353,7 +420,7 @@ interface SummaryData {
   doneSets: number
   totalSets: number
   prs: string[]   // exercise names that hit a new PR
-  exerciseLines: { name: string; sets: number; topWeight: number }[]
+  exerciseLines: { name: string; sets: number; top: string }[]
   manual: boolean
 }
 
@@ -409,7 +476,7 @@ function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => voi
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="font-serif text-[15px] text-text font-medium">{e.name}</span>
                   <span className="font-mono text-[12px] text-text-dim tracking-[0.02em]">
-                    {e.sets} sets · {e.topWeight > 0 ? `${e.topWeight} kg` : '—'}
+                    {e.sets} sets · {e.top}
                   </span>
                 </div>
               </div>
@@ -483,10 +550,11 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
             defaultReps: '—',
             category: 'isolation' as const,
             day: [type], optional: true,
+            unit: el.unit ?? 'kg',
           })
         }
       })
-      defaults.forEach(ex => { if (!log[ex.id]) log[ex.id] = defaultSetsFor(ex, sessions, type) })
+      defaults.forEach(ex => { if (!log[ex.id]) log[ex.id] = defaultSetsFor(ex, sessions) })
       const ordered = [...defaults, ...added]
       return {
         type, added, log, notes,
@@ -500,10 +568,10 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
   }
 
   // 3. Fresh.
-  const type = getTypeForDate(date)
+  const type = workoutTypeFor(date)
   const exercises = getExercisesForDay(type)
   const log: LiveLog = {}
-  exercises.forEach(ex => { log[ex.id] = defaultSetsFor(ex, sessions, type) })
+  exercises.forEach(ex => { log[ex.id] = defaultSetsFor(ex, sessions) })
   return {
     type, added: [], log, note: '', notes: {},
     activeId: exercises[0]?.id ?? null,
@@ -521,7 +589,9 @@ function WorkoutForDate({ date }: { date: string }) {
   const isToday = date === todayKey()
   const mode: 'live' | 'manual' = isToday ? 'live' : 'manual'
 
-  const init = useRef<InitState>(loadInitial(date, isToday, sessions)).current
+  // Lazy initialiser, not useRef(loadInitial(...)) — that form re-runs the whole
+  // draft parse and history scan on every render and discards the result.
+  const [init] = useState<InitState>(() => loadInitial(date, isToday, sessions))
 
   const [type, setType] = useState<WorkoutType>(init.type)
   const [added, setAdded] = useState<Exercise[]>(init.added)
@@ -541,8 +611,9 @@ function WorkoutForDate({ date }: { date: string }) {
   const [newExName, setNewExName] = useState('')
   const [showNote, setShowNote] = useState(!!init.note)
   const [showDiscard, setShowDiscard] = useState(false)
-  const [restEnd, setRestEnd] = useState<number | null>(null)
-  const [restRemaining, setRestRemaining] = useState(0)
+  const [historyFor, setHistoryFor] = useState<Exercise | null>(null)
+  const rest = useRestTimer()
+  const bodyWeight = useMemo(() => latestBodyWeightKg(), [])
   const startRef = useRef<number | null>(init.startedAt)
   // Per-type stash so switching workout type (manual entry) doesn't lose what
   // you already filled — switch back and it's restored.
@@ -580,27 +651,15 @@ function WorkoutForDate({ date }: { date: string }) {
     try { localStorage.removeItem(KEYS.workoutDraft(date)) } catch {}
   }
 
-  // Rest countdown — starts when a set is logged in a live session.
-  useEffect(() => {
-    if (restEnd == null) return
-    const tick = () => {
-      const rem = Math.round((restEnd - Date.now()) / 1000)
-      setRestRemaining(rem)
-      if (rem <= 0) { navigator.vibrate?.(40); setRestEnd(null) }
-    }
-    tick()
-    const id = setInterval(tick, 250)
-    return () => clearInterval(id)
-  }, [restEnd])
-
-  const addRest = (delta: number) =>
-    setRestEnd(e => Math.max(Date.now(), (e ?? Date.now()) + delta * 1000))
-
   const totalSets = exercises.reduce((a, e) => a + (log[e.id]?.length ?? e.defaultSets), 0)
   const doneSets  = exercises.reduce((a, e) => a + (log[e.id]?.filter(s => s.done).length ?? 0), 0)
   const volume    = exercises.reduce(
-    (acc, e) => acc + (log[e.id] ?? []).filter(s => s.done).reduce((a, s) => a + s.actW * s.actR, 0),
-    0
+    (acc, e) =>
+      acc + (log[e.id] ?? []).filter(s => s.done).reduce(
+        (a, s) => a + setVolume({ weight: s.actW, reps: s.actR, done: true }, e.unit ?? 'kg', bodyWeight),
+        0,
+      ),
+    0,
   )
 
   const updateSet = (id: string, setIdx: number, ns: LiveSet) => {
@@ -610,7 +669,7 @@ function WorkoutForDate({ date }: { date: string }) {
   const logSet = (id: string, setIdx: number) => {
     setLog(prev => ({ ...prev, [id]: prev[id].map((s, i) => (i === setIdx ? { ...s, done: true } : s)) }))
     navigator.vibrate?.(15)
-    if (mode === 'live') setRestEnd(Date.now() + REST_DEFAULT * 1000)
+    if (mode === 'live' && restAutoStart()) rest.start()
     const currentSets = log[id] || []
     const allDoneAfter = currentSets.every((s, i) => i === setIdx || s.done)
     if (allDoneAfter) {
@@ -646,7 +705,7 @@ function WorkoutForDate({ date }: { date: string }) {
   const addFromLibrary = (ex: Exercise) => {
     if (exercises.some(e => e.id === ex.id)) { setActiveId(ex.id); closePicker(); return }
     setAdded(prev => [...prev, ex])
-    setLog(prev => ({ ...prev, [ex.id]: defaultSetsFor(ex, sessions, type) }))
+    setLog(prev => ({ ...prev, [ex.id]: defaultSetsFor(ex, sessions) }))
     setActiveId(ex.id)
     closePicker()
   }
@@ -684,7 +743,7 @@ function WorkoutForDate({ date }: { date: string }) {
     } else {
       const ex = getExercisesForDay(next)
       const nl: LiveLog = {}
-      ex.forEach(e => { nl[e.id] = defaultSetsFor(e, sessions, next) })
+      ex.forEach(e => { nl[e.id] = defaultSetsFor(e, sessions) })
       setLog(nl)
       setAdded([])
       setNotes({})
@@ -707,7 +766,13 @@ function WorkoutForDate({ date }: { date: string }) {
       exercises: exercises.map(ex => {
         const sets = (log[ex.id] || []).map(s => ({ weight: s.actW, reps: s.actR, done: s.done }))
         const skipped = sets.length > 0 && sets.every(s => !s.done)
-        return { exerciseId: ex.id, name: ex.name, sets, skipped, note: notes[ex.id]?.trim() || undefined }
+        return {
+          exerciseId: ex.id,
+          name: ex.name,
+          unit: ex.unit ?? 'kg',
+          sets, skipped,
+          note: notes[ex.id]?.trim() || undefined,
+        }
       }),
     }
 
@@ -719,12 +784,20 @@ function WorkoutForDate({ date }: { date: string }) {
     clearDraft()
 
     const prs = exercises
-      .filter(ex => (log[ex.id] || []).some(s => s.done && s.actW > s.expW))
+      .filter(ex => (log[ex.id] || []).some(s => s.done && beatsExpected(s)))
       .map(e => e.name)
     const exerciseLines = exercises.map(ex => {
-      const sets = (log[ex.id] || []).filter(s => s.done)
-      const topWeight = sets.length ? Math.max(...sets.map(s => s.actW)) : 0
-      return { name: ex.name, sets: sets.length, topWeight }
+      const unit = ex.unit ?? 'kg'
+      const done = (log[ex.id] || []).filter(s => s.done)
+      const top = done.reduce<LiveSet | null>(
+        (best, s) => (best == null || s.actW > best.actW || (s.actW === best.actW && s.actR > best.actR) ? s : best),
+        null,
+      )
+      return {
+        name: ex.name,
+        sets: done.length,
+        top: top ? formatSet({ weight: top.actW, reps: top.actR, done: true }, unit) : '—',
+      }
     }).filter(e => e.sets > 0)
 
     setSummary({
@@ -799,6 +872,17 @@ function WorkoutForDate({ date }: { date: string }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Lift history ── */}
+      {historyFor && (
+        <ExerciseHistorySheet
+          name={historyFor.name}
+          exerciseId={historyFor.id}
+          unit={historyFor.unit ?? 'kg'}
+          sessions={sessions}
+          onClose={() => setHistoryFor(null)}
+        />
       )}
 
       {/* ── Exercise picker ── */}
@@ -903,9 +987,24 @@ function WorkoutForDate({ date }: { date: string }) {
           </button>
         </div>
         {mode === 'live' ? (
-          <div className="text-right">
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Elapsed</p>
-            <p className="font-mono text-[24px] text-text font-medium tracking-[-0.02em]">{fmtElapsed(elapsed)}</p>
+          <div className="text-right flex flex-col items-end gap-1.5">
+            <div>
+              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Elapsed</p>
+              <p className="font-mono text-[24px] text-text font-medium tracking-[-0.02em]">{fmtElapsed(elapsed)}</p>
+            </div>
+            {/* Manual by default — you decide when a rest actually starts. */}
+            <button
+              onClick={() => (rest.remaining == null ? rest.start() : rest.stop())}
+              className={[
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-pill border font-mono text-[10px] uppercase tracking-[0.08em] cursor-pointer transition-colors',
+                rest.remaining == null
+                  ? 'bg-panel-inset border-[var(--color-panel-border)] text-text-dim'
+                  : 'bg-[var(--color-accent-soft)] border-accent text-accent',
+              ].join(' ')}
+            >
+              <Clock size={11} strokeWidth={1.9} />
+              {rest.remaining == null ? 'Start rest' : 'Stop rest'}
+            </button>
           </div>
         ) : null}
       </div>
@@ -959,7 +1058,8 @@ function WorkoutForDate({ date }: { date: string }) {
             onUnlog={si => unlogSet(ex.id, si)}
             onAddSet={() => addSet(ex.id)}
             onSkip={() => skipExercise(ex.id)}
-            stalled={isStalled(sessions, type, ex.id)}
+            stalled={isStalled(sessions, ex.id)}
+            onHistory={() => setHistoryFor(ex)}
             note={notes[ex.id] ?? ''}
             onNote={v => setNotes(prev => ({ ...prev, [ex.id]: v }))}
           />
@@ -995,31 +1095,6 @@ function WorkoutForDate({ date }: { date: string }) {
         >
           <StickyNote size={13} strokeWidth={1.7} /> Add workout note
         </button>
-      )}
-
-      {/* ── Rest timer (floating) ── */}
-      {restEnd != null && (
-        <div className="fixed left-0 right-0 bottom-[92px] md:bottom-6 z-40 flex justify-center px-4 pointer-events-none">
-          <div className="pointer-events-auto bg-panel border border-accent rounded-pill shadow-card flex items-center gap-2 pl-4 pr-2 py-1.5">
-            <Clock size={14} strokeWidth={1.8} className="text-accent" />
-            <span className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Rest</span>
-            <span className="font-mono text-[20px] text-text font-medium tabular-nums w-[52px] text-center">
-              {fmtElapsed(Math.max(0, restRemaining))}
-            </span>
-            <button
-              onClick={() => addRest(-15)}
-              className="font-mono text-[11px] text-text-dim px-2 py-1.5 bg-transparent border-none cursor-pointer"
-            >−15</button>
-            <button
-              onClick={() => setRestEnd(null)}
-              className="font-mono text-[11px] text-accent-text font-semibold uppercase tracking-[0.04em] px-3 py-1.5 rounded-pill bg-accent border-none cursor-pointer"
-            >Skip</button>
-            <button
-              onClick={() => addRest(15)}
-              className="font-mono text-[11px] text-text-dim px-2 py-1.5 bg-transparent border-none cursor-pointer"
-            >+15</button>
-          </div>
-        </div>
       )}
 
       {/* ── Finish / Save ── */}

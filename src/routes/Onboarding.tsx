@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { Btn, Divider } from '../components/ui'
+import { todayKey } from '../lib/date'
+import { Btn } from '../components/ui'
 import type { Profile, MeasurementEntry } from '../lib/types'
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ function NameStep({ onNext }: { onNext: (name: string) => void }) {
           What's your name?
         </h1>
         <p className="font-sans text-[14px] text-text-dim leading-[21px] mb-8">
-          GainZ is a personal tracker — it'll greet you by name every morning.
+          Upkeep is a personal tracker — it'll greet you by name every morning.
         </p>
 
         <input
@@ -90,7 +91,8 @@ function BaselineStep({ name, onDone }: { name: string; onDone: (m: MeasurementE
     const w = parseFloat(form.weight)
     if (isNaN(w) || w <= 0) return null
     return {
-      date: new Date().toISOString().split('T')[0],
+      // Local-tz key — toISOString() would file the baseline under the wrong day.
+      date: todayKey(),
       weight:     w,
       bodyFat:    parseFloat(form.bodyFat)    || 0,
       muscleMass: parseFloat(form.muscleMass) || 0,
@@ -190,9 +192,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         {/* Logo */}
         <div className="flex items-center gap-3 mb-12">
           <div className="w-9 h-9 rounded-[10px] bg-accent flex items-center justify-center shrink-0">
-            <span className="font-mono font-bold text-sm text-accent-text leading-none">GZ</span>
+            <span className="font-mono font-bold text-sm text-accent-text leading-none">UK</span>
           </div>
-          <span className="font-serif text-xl text-text tracking-tight">GainZ</span>
+          <span className="font-serif text-xl text-text tracking-tight">Upkeep</span>
         </div>
 
         {step === 'name'     && <NameStep     onNext={handleName} />}

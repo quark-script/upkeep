@@ -1,8 +1,14 @@
 import { format, subDays } from 'date-fns'
 import { EXERCISES, PROTEIN_ITEMS } from './data'
-import { KEYS } from './storage'
+import { KEYS, DAY_PREFIXES } from './storage'
 import { dateKey, parseKey } from './date'
-import type { Session, ExerciseLog, MeasurementEntry, Profile, ProteinItem, SleepEntry } from './types'
+import { sessionVolume, bestE1RM, logUnit, formatSet, topSet, latestBodyWeightKg } from './stats'
+import { proteinTargetG, itemsForDay, proteinForDay } from './nutrition'
+import { isDue, scheduleLabel, adherence } from './routines'
+import { sleepDurationH } from './sleep'
+import type {
+  Session, ExerciseLog, MeasurementEntry, Profile, ProteinItem, SleepEntry, Medicine, SkinStep,
+} from './types'
 
 // ─── Name / label resolution ────────────────────────────────────────────────
 
@@ -24,20 +30,6 @@ function proteinLabelMap(): Map<string, string> {
 }
 
 // ─── Shared maths ────────────────────────────────────────────────────────────
-
-function sleepDuration(e: SleepEntry): number | null {
-  if (e.bed == null || e.awake == null) return null
-  let a = e.awake; if (a < 12) a += 24
-  let b = e.bed;   if (b < 12) b += 24
-  return Math.round((a - b) * 10) / 10
-}
-
-function sessionVolume(s: Session): number {
-  return s.exercises.reduce(
-    (acc, ex) => acc + ex.sets.filter(st => st.done).reduce((a, st) => a + st.weight * st.reps, 0),
-    0,
-  )
-}
 
 function readDayKeys<T>(prefix: string, skip?: (k: string) => boolean): { date: string; value: T }[] {
   return Object.keys(localStorage)
@@ -72,41 +64,93 @@ export function buildReport() {
       note: s.note ?? null,
       exercises: s.exercises
         .filter(ex => ex.sets.length > 0)
-        .map(ex => ({
-          name: exerciseName(ex),
-          note: ex.note ?? null,
-          skipped: ex.skipped ?? false,
-          sets: ex.sets.map((st, i) => ({
-            set: i + 1, weightKg: st.weight, reps: st.reps, done: st.done,
-          })),
-        })),
+        .map(ex => {
+          const unit = logUnit(ex)
+          return {
+            name: exerciseName(ex),
+            loadUnit: unit,
+            note: ex.note ?? null,
+            skipped: ex.skipped ?? false,
+            sets: ex.sets.map((st, i) =>
+              unit === 'time'
+                ? { set: i + 1, holdSeconds: st.reps, done: st.done }
+                : { set: i + 1, weightKg: st.weight, reps: st.reps, done: st.done },
+            ),
+          }
+        }),
     }))
 
-  const sleep = readDayKeys<SleepEntry>('gainz:sleep:')
+  const sleep = readDayKeys<SleepEntry>(DAY_PREFIXES.sleep)
     .map(({ date, value }) => ({
-      date,
+      nightOf: date,
       phoneAway: value.phone ?? null,
       inBed: value.bed ?? null,
       awake: value.awake ?? null,
-      durationH: sleepDuration(value),
+      durationH: sleepDurationH(value),
+      quality: value.quality ?? null,
     }))
 
-  const nutrition = readDayKeys<Record<string, boolean>>('gainz:protein:', k => k.endsWith(':custom'))
+  const target = proteinTargetG()
+  const nutrition = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.protein, k => k.endsWith(':custom'))
     .map(({ date, value }) => {
-      const items = Object.entries(value).map(([id, done]) => ({ label: labels.get(id) ?? id, done }))
-      return { date, hit: items.filter(i => i.done).length, total: items.length, items }
+      const byId = new Map(itemsForDay(date).map(it => [it.id, it]))
+      const items = Object.entries(value).map(([id, done]) => {
+        const it = byId.get(id)
+        return { label: it?.label ?? labels.get(id) ?? id, proteinG: it?.grams ?? 0, done }
+      })
+      const eaten = items.filter(i => i.done)
+      return {
+        date,
+        proteinG: eaten.reduce((a, i) => a + i.proteinG, 0),
+        targetG: target,
+        hit: eaten.length,
+        total: items.length,
+        items,
+      }
     })
 
+  const meds = JSON.parse(localStorage.getItem(KEYS.MEDICINES) ?? '[]') as Medicine[]
+  const skin = JSON.parse(localStorage.getItem(KEYS.SKINCARE) ?? '[]') as SkinStep[]
+  const medName = new Map(meds.map(m => [m.id, m.dose ? `${m.name} ${m.dose}` : m.name]))
+  const skinName = new Map(skin.map(s => [s.id, s.brand ? `${s.brand} ${s.label}` : s.label]))
+
+  const medicineLog = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.meds)
+    .map(({ date, value }) => ({
+      date,
+      taken: Object.entries(value).filter(([, v]) => v).map(([id]) => medName.get(id) ?? id),
+      missed: meds
+        .filter(m => m.active && isDue(m.schedule, date) && !value[m.id] && !(m.startedOn && date < m.startedOn))
+        .map(m => medName.get(m.id) ?? m.id),
+    }))
+
+  const skincareLog = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.skin)
+    .map(({ date, value }) => ({
+      date,
+      done: Object.entries(value).filter(([, v]) => v).map(([id]) => skinName.get(id) ?? id),
+      skipped: skin
+        .filter(s => s.active && isDue(s.schedule, date) && !value[s.id])
+        .map(s => `${skinName.get(s.id) ?? s.id} (${s.routine.toUpperCase()})`),
+    }))
+
   return {
-    app: 'GainZ',
-    schemaVersion: 2,
+    app: 'Upkeep',
+    schemaVersion: 3,
     exportedAt: new Date().toISOString(),
     legend: {
       weight: 'kilograms (kg)',
       times: '24-hour local clock as decimal hours (22.5 = 22:30); sleep times past midnight may read >24',
-      volumeKg: 'sum of weight × reps across completed sets',
+      sleep: 'each entry is keyed by nightOf, the date the lifter went to bed — `awake` is the following morning',
+      sleepQuality: 'self-rated 1 (wrecked) to 5 (fully rested); null when not rated',
+      proteinG: 'estimated grams of protein from the items ticked that day, against the daily targetG',
+      loadUnit:
+        'kg = weightKg is the external load. ' +
+        'bodyweight = weightKg is weight ADDED to the lifter (0 means unloaded). ' +
+        'time = the set is a hold, measured by holdSeconds, with no external load.',
+      volumeKg:
+        'sum of load × reps across completed sets; bodyweight lifts use (body weight + added weight), timed holds contribute 0',
       note: 'free-text instructions written by the lifter',
     },
+    bodyWeightKgUsedForVolume: latestBodyWeightKg() || null,
     profile,
     workouts,
     measurements: measurements.map(m => ({
@@ -120,6 +164,31 @@ export function buildReport() {
     })),
     sleep,
     nutrition,
+    medicines: {
+      regimen: meds.map(m => ({
+        name: m.name,
+        dose: m.dose ?? null,
+        form: m.form ?? null,
+        frequency: scheduleLabel(m.schedule),
+        takenAt: m.slot,
+        note: m.note ?? null,
+        startedOn: m.startedOn ?? null,
+        active: m.active,
+      })),
+      log: medicineLog,
+    },
+    skincare: {
+      routine: skin.map(s => ({
+        product: s.brand ? `${s.brand} ${s.label}` : s.label,
+        type: s.kind ?? null,
+        routine: s.routine,
+        step: s.order,
+        frequency: scheduleLabel(s.schedule),
+        note: s.note ?? null,
+        active: s.active,
+      })),
+      log: skincareLog,
+    },
   }
 }
 
@@ -139,17 +208,22 @@ function csvRow(cells: unknown[]): string {
 
 export function sessionsToCSV(sessions: Session[]): string {
   const rows = [csvRow([
-    'date', 'session_type', 'duration_min', 'exercise', 'set_number',
-    'weight_kg', 'reps', 'done', 'exercise_note', 'workout_note',
+    'date', 'session_type', 'duration_min', 'exercise', 'load_unit', 'set_number',
+    'weight_kg', 'reps', 'hold_seconds', 'done', 'exercise_note', 'workout_note',
   ])]
   for (const s of sessions.filter(s => s.finishedAt !== null)) {
     const dur = s.finishedAt ? Math.round((s.finishedAt - s.startedAt) / 60000) : ''
     for (const ex of s.exercises) {
       const name = exerciseName(ex)
+      const unit = logUnit(ex)
+      const isTime = unit === 'time'
       ex.sets.forEach((st, si) => {
         rows.push(csvRow([
-          s.date, s.type, dur, name, si + 1,
-          st.weight, st.reps, st.done, ex.note ?? '', s.note ?? '',
+          s.date, s.type, dur, name, unit, si + 1,
+          isTime ? '' : st.weight,
+          isTime ? '' : st.reps,
+          isTime ? st.reps : '',
+          st.done, ex.note ?? '', s.note ?? '',
         ]))
       })
     }
@@ -175,30 +249,29 @@ export function measurementsToCSV(ms: MeasurementEntry[]): string {
 }
 
 export function sleepToCSV(): string {
-  const rows = [csvRow(['date', 'phone_away', 'in_bed', 'awake', 'duration_h'])]
-  readDayKeys<SleepEntry>('gainz:sleep:').forEach(({ date, value }) => {
-    rows.push(csvRow([date, value.phone ?? '', value.bed ?? '', value.awake ?? '', sleepDuration(value) ?? '']))
+  const rows = [csvRow(['night_of', 'phone_away', 'in_bed', 'awake', 'duration_h', 'quality_1_5'])]
+  readDayKeys<SleepEntry>(DAY_PREFIXES.sleep).forEach(({ date, value }) => {
+    rows.push(csvRow([
+      date, value.phone ?? '', value.bed ?? '', value.awake ?? '',
+      sleepDurationH(value) ?? '', value.quality ?? '',
+    ]))
   })
   return rows.join('\n')
 }
 
 // ─── Weekly digest (plain markdown for a human or AI trainer) ────────────────
 
-function e1rm(weight: number, reps: number): number {
-  return weight * (1 + reps / 30)
-}
-
 // PRs set within [startKey, endKey] — a lift's est-1RM beating its own prior
 // best. A lift's first-ever appearance is a baseline, not a PR.
 function weeklyPRs(all: Session[], startKey: string, endKey: string): { name: string; value: number; date: string }[] {
+  const bw = latestBodyWeightKg()
   const finished = all.filter(s => s.finishedAt !== null).sort((a, b) => a.startedAt - b.startedAt)
   const best: Record<string, number> = {}
   const events: { name: string; value: number; date: string }[] = []
   for (const s of finished) {
     for (const ex of s.exercises) {
-      const done = ex.sets.filter(st => st.done)
-      if (done.length === 0) continue
-      const v = Math.max(...done.map(st => e1rm(st.weight, st.reps)))
+      const v = bestE1RM(ex, bw)
+      if (v == null) continue
       const prev = best[ex.exerciseId]
       if (prev == null) { best[ex.exerciseId] = v; continue }
       if (v > prev + 0.5) {
@@ -225,7 +298,7 @@ export function buildWeeklyDigest(): string {
   const profile = JSON.parse(localStorage.getItem(KEYS.PROFILE) ?? 'null') as Profile | null
 
   const L: string[] = []
-  L.push('# GainZ — Weekly Digest')
+  L.push('# Upkeep — Weekly Digest')
   L.push(`**${format(parseKey(startKey), 'MMM d')} – ${format(parseKey(endKey), 'MMM d, yyyy')}**`)
   if (profile?.name) L.push(`Lifter: ${profile.name}`)
   L.push('')
@@ -240,9 +313,9 @@ export function buildWeeklyDigest(): string {
     if (s.note) L.push(`  - note: ${s.note}`)
     for (const ex of s.exercises) {
       const done = ex.sets.filter(st => st.done)
-      if (done.length === 0) continue
-      const top = done.reduce((b, st) => (st.weight > b.weight ? st : b))
-      L.push(`  - ${exerciseName(ex)}: ${done.length} sets, top ${top.weight} kg × ${top.reps}${ex.note ? ` — ${ex.note}` : ''}`)
+      const top = topSet(ex)
+      if (!top) continue
+      L.push(`  - ${exerciseName(ex)}: ${done.length} sets, top ${formatSet(top, logUnit(ex))}${ex.note ? ` — ${ex.note}` : ''}`)
     }
   }
   L.push('')
@@ -255,25 +328,34 @@ export function buildWeeklyDigest(): string {
     L.push('')
   }
 
-  // Nutrition adherence
-  const proteinTotal = PROTEIN_ITEMS.length +
-    (JSON.parse(localStorage.getItem(KEYS.PROTEIN_CUSTOM) ?? '[]') as ProteinItem[]).length
-  const proteinDays = readDayKeys<Record<string, boolean>>('gainz:protein:', k => k.endsWith(':custom'))
+  // Nutrition
+  const target = proteinTargetG()
+  const proteinDays = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.protein, k => k.endsWith(':custom'))
     .filter(({ date }) => inWin(date))
+    .map(({ date }) => proteinForDay(date, target))
   if (proteinDays.length > 0) {
-    const avgHit = proteinDays.reduce((a, { value }) => a + Object.values(value).filter(Boolean).length, 0) / proteinDays.length
-    L.push(`## Nutrition — protein adherence ${Math.round((avgHit / proteinTotal) * 100)}% (${avgHit.toFixed(1)}/${proteinTotal} items/day avg)`)
+    const avgG = proteinDays.reduce((a, d) => a + d.grams, 0) / proteinDays.length
+    const daysHit = proteinDays.filter(d => d.grams >= target).length
+    L.push(`## Nutrition — ${Math.round(avgG)} g protein/day average (target ${target} g)`)
+    L.push(`- Target hit on ${daysHit} of ${proteinDays.length} logged day${proteinDays.length === 1 ? '' : 's'}`)
     L.push('')
   }
 
   // Sleep
-  const sleepDays = readDayKeys<SleepEntry>('gainz:sleep:')
-    .filter(({ date }) => inWin(date))
-    .map(({ value }) => sleepDuration(value))
-    .filter((d): d is number => d != null)
-  if (sleepDays.length > 0) {
-    const avg = sleepDays.reduce((a, d) => a + d, 0) / sleepDays.length
-    L.push(`## Sleep — ${avg.toFixed(1)} h average over ${sleepDays.length} night${sleepDays.length === 1 ? '' : 's'}`)
+  const nights = readDayKeys<SleepEntry>(DAY_PREFIXES.sleep).filter(({ date }) => inWin(date))
+  const durations = nights.map(({ value }) => sleepDurationH(value)).filter((d): d is number => d != null)
+  const qualities = nights.map(({ value }) => value.quality).filter((q): q is number => q != null)
+  if (durations.length > 0 || qualities.length > 0) {
+    const parts: string[] = []
+    if (durations.length > 0) {
+      const avg = durations.reduce((a, d) => a + d, 0) / durations.length
+      parts.push(`${avg.toFixed(1)} h average over ${durations.length} night${durations.length === 1 ? '' : 's'}`)
+    }
+    if (qualities.length > 0) {
+      const avgQ = qualities.reduce((a, q) => a + q, 0) / qualities.length
+      parts.push(`rested ${avgQ.toFixed(1)}/5`)
+    }
+    L.push(`## Sleep — ${parts.join(' · ')}`)
     L.push('')
   }
 
@@ -291,16 +373,69 @@ export function buildWeeklyDigest(): string {
     L.push('')
   }
 
-  L.push('_Generated by GainZ._')
+  // Medicines
+  const meds = (JSON.parse(localStorage.getItem(KEYS.MEDICINES) ?? '[]') as Medicine[]).filter(m => m.active)
+  if (meds.length > 0) {
+    const winDays = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.meds).filter(({ date }) => inWin(date))
+    const checks: Record<string, Record<string, boolean>> = {}
+    winDays.forEach(({ date, value }) => { checks[date] = value })
+    const days: string[] = []
+    for (let d = 6; d >= 0; d--) days.push(dateKey(subDays(today, d)))
+
+    L.push('## Medicines')
+    for (const m of meds) {
+      const a = adherence(m.schedule, checks, m.id, days, m.startedOn)
+      const label = `${m.name}${m.dose ? ` ${m.dose}` : ''} — ${scheduleLabel(m.schedule)}`
+      L.push(a.expected > 0
+        ? `- ${label}: ${a.taken}/${a.expected} taken`
+        : `- ${label}: as needed`)
+    }
+    L.push('')
+  }
+
+  // Skincare
+  const skin = (JSON.parse(localStorage.getItem(KEYS.SKINCARE) ?? '[]') as SkinStep[]).filter(s => s.active)
+  if (skin.length > 0) {
+    const winDays = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.skin).filter(({ date }) => inWin(date))
+    const checks: Record<string, Record<string, boolean>> = {}
+    winDays.forEach(({ date, value }) => { checks[date] = value })
+    const days: string[] = []
+    for (let d = 6; d >= 0; d--) days.push(dateKey(subDays(today, d)))
+
+    const totals = (['am', 'pm'] as const).map(routine => {
+      const mine = skin.filter(s => s.routine === routine)
+      return mine.reduce(
+        (acc, s) => {
+          const a = adherence(s.schedule, checks, s.id, days, s.startedOn)
+          return { taken: acc.taken + a.taken, expected: acc.expected + a.expected, routine }
+        },
+        { taken: 0, expected: 0, routine },
+      )
+    }).filter(t => t.expected > 0)
+
+    if (totals.length > 0) {
+      L.push('## Skincare')
+      totals.forEach(t => {
+        L.push(`- ${t.routine === 'am' ? 'Morning' : 'Night'} routine: ${t.taken}/${t.expected} steps completed`)
+      })
+      L.push('')
+    }
+  }
+
+  L.push('_Generated by Upkeep._')
   return L.join('\n')
 }
 
 export function proteinToCSV(): string {
   const labels = proteinLabelMap()
-  const rows = [csvRow(['date', 'item', 'checked'])]
-  readDayKeys<Record<string, boolean>>('gainz:protein:', k => k.endsWith(':custom')).forEach(({ date, value }) => {
+  const target = proteinTargetG()
+  const rows = [csvRow(['date', 'item', 'protein_g', 'checked', 'day_total_g', 'day_target_g'])]
+  readDayKeys<Record<string, boolean>>(DAY_PREFIXES.protein, k => k.endsWith(':custom')).forEach(({ date, value }) => {
+    const byId = new Map(itemsForDay(date).map(it => [it.id, it]))
+    const dayTotal = proteinForDay(date, target).grams
     Object.entries(value).forEach(([id, checked]) => {
-      rows.push(csvRow([date, labels.get(id) ?? id, checked]))
+      const it = byId.get(id)
+      rows.push(csvRow([date, it?.label ?? labels.get(id) ?? id, it?.grams ?? 0, checked, dayTotal, target]))
     })
   })
   return rows.join('\n')

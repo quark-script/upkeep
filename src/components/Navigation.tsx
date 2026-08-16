@@ -49,9 +49,9 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-3 mb-10">
         <div className="w-9 h-9 rounded-[10px] bg-accent flex items-center justify-center shrink-0">
-          <span className="font-mono font-bold text-sm text-accent-text leading-none">GZ</span>
+          <span className="font-mono font-bold text-sm text-accent-text leading-none">UK</span>
         </div>
-        <span className="font-serif text-xl text-text tracking-tight">GainZ</span>
+        <span className="font-serif text-xl text-text tracking-tight">Upkeep</span>
       </div>
 
       {/* Nav */}

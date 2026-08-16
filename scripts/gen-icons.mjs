@@ -12,7 +12,7 @@ function makeSVG(size) {
   const r  = size * 0.22          // corner radius (22% per README)
   const cx = size / 2
   const cy = size / 2
-  // Inner GZ text scales with size
+  // Inner UK text scales with size
   const fs = Math.round(size * 0.32)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
   <!-- bg -->
@@ -30,7 +30,7 @@ function makeSVG(size) {
     rx="${size * 0.10}"
     fill="#B0413E"
   />
-  <!-- GZ monogram -->
+  <!-- UK monogram -->
   <text
     x="${cx}" y="${cy + fs * 0.36}"
     font-family="'JetBrains Mono', monospace"
@@ -39,7 +39,7 @@ function makeSVG(size) {
     fill="#EDEAE3"
     text-anchor="middle"
     letter-spacing="-1"
-  >GZ</text>
+  >UK</text>
 </svg>`
 }
 
