@@ -1,32 +1,22 @@
 import { format, subDays } from 'date-fns'
-import { EXERCISES, PROTEIN_ITEMS } from './data'
 import { KEYS, DAY_PREFIXES } from './storage'
 import { dateKey, parseKey } from './date'
+import { exerciseById } from './library'
 import { sessionVolume, bestE1RM, logUnit, formatSet, topSet, latestBodyWeightKg } from './stats'
-import { proteinTargetG, itemsForDay, proteinForDay } from './nutrition'
+import { targets, dayMacros, dayEntries, foodById, isMigratedDay } from './nutrition'
 import { isDue, scheduleLabel, adherence } from './routines'
 import { sleepDurationH } from './sleep'
 import type {
-  Session, ExerciseLog, MeasurementEntry, Profile, ProteinItem, SleepEntry, Medicine, SkinStep,
+  Session, ExerciseLog, MeasurementEntry, Profile, SleepEntry, Medicine, SkinStep,
 } from './types'
 
 // ─── Name / label resolution ────────────────────────────────────────────────
 
-const NAME_BY_ID = new Map(EXERCISES.map(e => [e.id, e.name]))
-
-// Prefer the name captured at log time; fall back to the library, then the raw
-// id (back-compat for sessions logged before names were stored).
+// Prefer the name captured at log time — that is what was true when it was
+// logged — then the resolved library, which now covers custom lifts too. The
+// raw id is a last resort for sessions logged before names were stored.
 export function exerciseName(log: ExerciseLog): string {
-  return log.name ?? NAME_BY_ID.get(log.exerciseId) ?? log.exerciseId
-}
-
-function proteinLabelMap(): Map<string, string> {
-  const map = new Map(PROTEIN_ITEMS.map(p => [p.id, p.label]))
-  try {
-    const custom = JSON.parse(localStorage.getItem(KEYS.PROTEIN_CUSTOM) ?? '[]') as ProteinItem[]
-    custom.forEach(p => map.set(p.id, p.label))
-  } catch {}
-  return map
+  return log.name ?? exerciseById(log.exerciseId)?.name ?? log.exerciseId
 }
 
 // ─── Shared maths ────────────────────────────────────────────────────────────
@@ -51,7 +41,6 @@ export function buildReport() {
   const sessions = JSON.parse(localStorage.getItem(KEYS.SESSIONS) ?? '[]') as Session[]
   const measurements = JSON.parse(localStorage.getItem(KEYS.MEASUREMENTS) ?? '[]') as MeasurementEntry[]
   const profile = JSON.parse(localStorage.getItem(KEYS.PROFILE) ?? 'null') as Profile | null
-  const labels = proteinLabelMap()
 
   const workouts = sessions
     .filter(s => s.finishedAt !== null)
@@ -90,24 +79,21 @@ export function buildReport() {
       quality: value.quality ?? null,
     }))
 
-  const target = proteinTargetG()
-  const nutrition = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.protein, k => k.endsWith(':custom'))
-    .map(({ date, value }) => {
-      const byId = new Map(itemsForDay(date).map(it => [it.id, it]))
-      const items = Object.entries(value).map(([id, done]) => {
-        const it = byId.get(id)
-        return { label: it?.label ?? labels.get(id) ?? id, proteinG: it?.grams ?? 0, done }
-      })
-      const eaten = items.filter(i => i.done)
-      return {
-        date,
-        proteinG: eaten.reduce((a, i) => a + i.proteinG, 0),
-        targetG: target,
-        hit: eaten.length,
-        total: items.length,
-        items,
-      }
-    })
+  const t = targets()
+  const nutrition = readDayKeys<unknown>(DAY_PREFIXES.food)
+    .map(({ date }) => ({
+      date,
+      ...dayMacros(date),
+      targets: { kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat },
+      items: dayEntries(date).map(e => ({
+        slot: e.slot,
+        food: e.name,
+        qty: e.qty,
+        serving: servingLabel(e.foodId, e.servingId),
+        grams: e.grams,
+        ...e.macros,
+      })),
+    }))
 
   const meds = JSON.parse(localStorage.getItem(KEYS.MEDICINES) ?? '[]') as Medicine[]
   const skin = JSON.parse(localStorage.getItem(KEYS.SKINCARE) ?? '[]') as SkinStep[]
@@ -329,15 +315,26 @@ export function buildWeeklyDigest(): string {
   }
 
   // Nutrition
-  const target = proteinTargetG()
-  const proteinDays = readDayKeys<Record<string, boolean>>(DAY_PREFIXES.protein, k => k.endsWith(':custom'))
-    .filter(({ date }) => inWin(date))
-    .map(({ date }) => proteinForDay(date, target))
-  if (proteinDays.length > 0) {
-    const avgG = proteinDays.reduce((a, d) => a + d.grams, 0) / proteinDays.length
-    const daysHit = proteinDays.filter(d => d.grams >= target).length
-    L.push(`## Nutrition — ${Math.round(avgG)} g protein/day average (target ${target} g)`)
-    L.push(`- Target hit on ${daysHit} of ${proteinDays.length} logged day${proteinDays.length === 1 ? '' : 's'}`)
+  const t = targets()
+  // Days reconstructed from the old protein checkboxes recorded supplements
+  // only; averaging them in would report a ~300 kcal/day intake that never
+  // happened. They are counted separately, not silently dropped.
+  const allFoodDays = readDayKeys<unknown>(DAY_PREFIXES.food).filter(({ date }) => inWin(date))
+  const partial = allFoodDays.filter(({ date }) => isMigratedDay(date)).length
+  const foodDays = allFoodDays
+    .filter(({ date }) => !isMigratedDay(date))
+    .map(({ date }) => dayMacros(date))
+    .filter(m => m.kcal > 0 || m.protein > 0)
+  if (foodDays.length > 0) {
+    const avg = (pick: (m: typeof foodDays[number]) => number) =>
+      Math.round(foodDays.reduce((a, m) => a + pick(m), 0) / foodDays.length)
+    const proteinHit = foodDays.filter(m => m.protein >= t.protein).length
+    L.push(`## Nutrition — ${avg(m => m.kcal)} kcal/day average (target ${t.kcal})`)
+    L.push(`- Protein ${avg(m => m.protein)} g · carbs ${avg(m => m.carbs)} g · fat ${avg(m => m.fat)} g per day`)
+    L.push(`- Protein target (${t.protein} g) hit on ${proteinHit} of ${foodDays.length} logged day${foodDays.length === 1 ? '' : 's'}`)
+    if (partial > 0) {
+      L.push(`- ${partial} earlier day${partial === 1 ? '' : 's'} carried over from protein-only logging, excluded from these averages`)
+    }
     L.push('')
   }
 
@@ -426,16 +423,31 @@ export function buildWeeklyDigest(): string {
   return L.join('\n')
 }
 
-export function proteinToCSV(): string {
-  const labels = proteinLabelMap()
-  const target = proteinTargetG()
-  const rows = [csvRow(['date', 'item', 'protein_g', 'checked', 'day_total_g', 'day_target_g'])]
-  readDayKeys<Record<string, boolean>>(DAY_PREFIXES.protein, k => k.endsWith(':custom')).forEach(({ date, value }) => {
-    const byId = new Map(itemsForDay(date).map(it => [it.id, it]))
-    const dayTotal = proteinForDay(date, target).grams
-    Object.entries(value).forEach(([id, checked]) => {
-      const it = byId.get(id)
-      rows.push(csvRow([date, it?.label ?? labels.get(id) ?? id, it?.grams ?? 0, checked, dayTotal, target]))
+/** How a portion was entered, for the export's `serving` column. */
+function servingLabel(foodId: string, servingId: string | undefined): string {
+  if (!servingId) return 'grams'
+  return foodById(foodId)?.servings.find(s => s.id === servingId)?.label ?? 'serving'
+}
+
+// One row per thing eaten, plus that day's totals and targets on every row —
+// so the file is useful opened in a spreadsheet without a pivot table.
+export function foodToCSV(): string {
+  const t = targets()
+  const rows = [csvRow([
+    'date', 'slot', 'food', 'qty', 'serving', 'grams',
+    'kcal', 'protein_g', 'carbs_g', 'fat_g',
+    'day_kcal', 'day_protein_g', 'day_carbs_g', 'day_fat_g',
+    'target_kcal', 'target_protein_g', 'target_carbs_g', 'target_fat_g',
+  ])]
+  readDayKeys<unknown>(DAY_PREFIXES.food).forEach(({ date }) => {
+    const day = dayMacros(date)
+    dayEntries(date).forEach(e => {
+      rows.push(csvRow([
+        date, e.slot, e.name, e.qty, servingLabel(e.foodId, e.servingId), e.grams,
+        e.macros.kcal, e.macros.protein, e.macros.carbs, e.macros.fat,
+        day.kcal, day.protein, day.carbs, day.fat,
+        t.kcal, t.protein, t.carbs, t.fat,
+      ]))
     })
   })
   return rows.join('\n')

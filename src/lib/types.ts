@@ -34,6 +34,8 @@ export interface Session {
   note?: string       // workout-level note / instruction
 }
 
+export type Equipment = 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'bodyweight' | 'other'
+
 export interface Exercise {
   id: string
   name: string
@@ -44,7 +46,27 @@ export interface Exercise {
   optional?: boolean    // not in the default day session; available via the picker
   unit?: LoadUnit       // absent = 'kg'
   groups?: MuscleGroup[]  // muscles trained, for weekly balance
+  aliases?: string[]      // alternate spellings, matched by search, never displayed
+  equipment?: Equipment
+  step?: number           // load increment in kg; absent = stepFor(unit, category)
+  custom?: boolean        // true = user-created, stored in upkeep:exercises
 }
+
+// Per-exercise user overrides, keyed by exercise id. Sparse by design: only
+// fields the user actually changed are present, so improvements to the seed
+// catalog still reach every field left untouched.
+export interface ExercisePrefs {
+  step?: number
+  unit?: LoadUnit
+  groups?: MuscleGroup[]
+  defaultSets?: number
+  defaultReps?: string
+  hidden?: boolean
+}
+
+// The user's lift list for one workout type, replacing the `day` + `optional`
+// seed defaults once set. Array order is display order.
+export type DayPlan = Partial<Record<WorkoutType, string[]>>
 
 export interface MeasurementEntry {
   date: string        // YYYY-MM-DD
@@ -72,6 +94,7 @@ export interface Profile {
   name: string
 }
 
+/** Legacy: the pre-food checkbox plan. Kept only so the migration can read it. */
 export interface ProteinItem {
   id: string
   label: string
@@ -79,6 +102,78 @@ export interface ProteinItem {
   grams?: number    // protein content estimate; absent = 0 (e.g. creatine)
   custom?: boolean  // user-added to the standing daily plan
   oneOff?: boolean  // logged for a single day only, not part of the plan
+}
+
+// ─── Nutrition ──────────────────────────────────────────────────────────
+
+export type FoodSource = 'seed' | 'custom' | 'off'
+
+export type MealSlot = 'breakfast' | 'lunch' | 'snack' | 'dinner'
+
+/** Macros per 100 g (or per 100 ml for liquids). The single source of truth —
+ *  every serving is a gram weight that scales these. */
+export interface Macros {
+  kcal: number
+  protein: number
+  carbs: number
+  fat: number
+}
+
+/** A named household portion. `grams` is what it actually weighs, which is how
+ *  it converts to macros — so "1 bowl" can be corrected once and every entry
+ *  logged from then on stays consistent. */
+export interface Serving {
+  id: string
+  label: string
+  grams: number
+}
+
+export interface Food {
+  id: string
+  name: string
+  brand?: string
+  per100: Macros
+  servings: Serving[]        // always non-empty
+  defaultServingId: string
+  liquid?: boolean           // label servings in ml
+  source: FoodSource
+  barcode?: string           // reserved for a future scanner
+  aliases?: string[]
+  needsReview?: boolean      // migrated with estimated or missing macros
+  createdAt: number
+  lastUsedAt?: number
+}
+
+/** One thing eaten. `grams` and `macros` are resolved at log time and stored,
+ *  NOT derived on read: correcting a food's serving weight later must improve
+ *  the future without silently rewriting three months of history. */
+export interface FoodEntry {
+  id: string
+  foodId: string
+  name: string               // captured at log time, survives food deletion
+  servingId?: string         // absent = logged as a raw gram weight
+  qty: number                // servings, or grams when servingId is absent
+  grams: number
+  macros: Macros
+  slot: MealSlot
+  /** Reconstructed by the protein-checkbox migration rather than logged. Such a
+   *  day recorded only which supplements were ticked, so its totals are a floor,
+   *  not a measurement — averages and charts exclude them. */
+  migrated?: boolean
+  at: number
+}
+
+export interface MacroTargets {
+  kcal: number
+  protein: number
+  carbs: number
+  fat: number
+}
+
+/** Only the fields the user has pinned; the rest are derived. */
+export interface TargetOverrides extends Partial<MacroTargets> {
+  activityFactor?: number    // BMR multiplier; absent = 1.5
+  goalDelta?: number         // kcal above/below maintenance; absent = +200
 }
 
 // One night's sleep, keyed by the date you went to bed — so `awake` is the

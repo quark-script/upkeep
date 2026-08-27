@@ -4,7 +4,24 @@ import type { Session, MeasurementEntry } from './types'
 const LEGACY_PREFIX = 'gainz:'
 
 // Transient state — never worth carrying between devices or restores.
-const SKIP_KEYS = new Set<string>([KEYS.REST_END, KEYS.LAST_BACKUP])
+//
+// `SYNC_STATE` is load-bearing here: it records which keys this device has
+// already pushed to the cloud. Carrying it onto another device — or restoring
+// it onto a fresh install — would convince that device everything was already
+// uploaded, and it would never seed.
+const SKIP_KEYS = new Set<string>([KEYS.REST_END, KEYS.LAST_BACKUP, KEYS.SYNC_STATE])
+
+// Pre-migration snapshots are a local undo buffer, not portable data: they hold
+// a full copy of everything else in this file, so carrying them would roughly
+// double every backup for no gain on the other device.
+// `KEYS.MIGRATIONS` is deliberately NOT skipped — without it a restore onto a
+// fresh install would re-run every migration against already-migrated data.
+const SKIP_PREFIXES = [`${PREFIX}snapshot:`]
+
+/** True for keys that stay on this device: transient state and local snapshots. */
+export function skipped(key: string): boolean {
+  return SKIP_KEYS.has(key) || SKIP_PREFIXES.some(p => key.startsWith(p))
+}
 
 export interface BackupFile {
   app: string
@@ -36,7 +53,7 @@ export interface RestoreResult {
 export function buildBackup(): BackupFile {
   const data: Record<string, string> = {}
   for (const key of Object.keys(localStorage)) {
-    if (!key.startsWith(PREFIX) || SKIP_KEYS.has(key)) continue
+    if (!key.startsWith(PREFIX) || skipped(key)) continue
     const value = localStorage.getItem(key)
     if (value != null) data[key] = value
   }
@@ -110,7 +127,7 @@ export function restoreBackup(text: string, mode: RestoreMode): RestoreResult {
   for (const [rawKey, value] of Object.entries(incoming)) {
     // Old backups carry `gainz:` keys; land them on the current prefix.
     const key = currentKey(rawKey)
-    if (key == null || SKIP_KEYS.has(key)) continue
+    if (key == null || skipped(key)) continue
 
     if (mode === 'replace') {
       localStorage.setItem(key, value)

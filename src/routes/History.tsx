@@ -7,7 +7,7 @@ import { KEYS } from '../lib/storage'
 import { useLogDate } from '../lib/dateContext'
 import { dateKey, todayKey, parseKey } from '../lib/date'
 import { sessionVolume, logUnit, formatSet, topSet } from '../lib/stats'
-import { proteinForDay, proteinTargetG } from '../lib/nutrition'
+import { dayMacros, targets } from '../lib/nutrition'
 import { sleepDurationH } from '../lib/sleep'
 import { exerciseName } from '../lib/export'
 import type { Session, SleepEntry } from '../lib/types'
@@ -20,6 +20,7 @@ interface DaySummary {
   session: Session | null
   proteinG: number
   proteinTarget: number
+  kcal: number
   sleepHours: number | null
 }
 
@@ -39,7 +40,7 @@ export default function History() {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [windowDays, setWindowDays] = useState(WINDOW_STEP)
 
-  const proteinTarget = proteinTargetG()
+  const proteinTarget = targets().protein
   const today = new Date()
 
   // Is there anything older than the current window still worth loading?
@@ -52,11 +53,11 @@ export default function History() {
   for (let i = 0; i < windowDays; i++) {
     const key = dateKey(subDays(today, i))
     const session = sessions.find(s => s.date === key && s.finishedAt !== null) ?? null
-    const { grams: proteinG, itemsDone } = proteinForDay(key, proteinTarget)
+    const { protein: proteinG, kcal } = dayMacros(key)
     const sleep = readJSON<SleepEntry>(KEYS.sleepDay(key), {})
     const sleepHours = sleepDurationH(sleep)
-    if (session || itemsDone > 0 || sleepHours != null || sleep.phone != null) {
-      days.push({ key, session, proteinG, proteinTarget, sleepHours })
+    if (session || kcal > 0 || proteinG > 0 || sleepHours != null || sleep.phone != null) {
+      days.push({ key, session, proteinG, proteinTarget, kcal, sleepHours })
     }
   }
 
@@ -106,7 +107,7 @@ export default function History() {
                         : <span className="text-text-dim font-normal">No workout</span>}
                     </p>
                     <p className="font-mono text-[10px] text-text-dim tracking-[0.03em] flex items-center gap-2.5">
-                      <span className="flex items-center gap-1"><CheckSquare size={10} strokeWidth={1.8} />{d.proteinG}/{d.proteinTarget}g</span>
+                      <span className="flex items-center gap-1"><CheckSquare size={10} strokeWidth={1.8} />{Math.round(d.kcal)} kcal · {Math.round(d.proteinG)}g P</span>
                       <span className="flex items-center gap-1"><Moon size={10} strokeWidth={1.8} />{d.sleepHours != null ? `${d.sleepHours.toFixed(1)}h` : '—'}</span>
                     </p>
                   </div>

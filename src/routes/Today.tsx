@@ -8,13 +8,14 @@ import {
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { todayKey, dateKey, parseKey } from '../lib/date'
-import { SPLIT, DAY_LABELS, COMPOUND_IDS, EXERCISES, PROTEIN_ITEMS } from '../lib/data'
-import { proteinTargetG } from '../lib/nutrition'
+import { SPLIT, DAY_LABELS, COMPOUND_IDS } from '../lib/data'
+import { planFor } from '../lib/library'
+import { targets } from '../lib/nutrition'
 import { calcStreak, TRAINING_DAYS_PER_WEEK } from '../lib/schedule'
 import { sessionVolume } from '../lib/stats'
 import { sleepDurationH } from '../lib/sleep'
 import { useToast } from '../lib/toast'
-import type { Session, MeasurementEntry, SleepEntry, WorkoutType, Profile, ProteinItem } from '../lib/types'
+import type { Session, MeasurementEntry, SleepEntry, WorkoutType, Profile, FoodEntry } from '../lib/types'
 import { Card, Pill, Stat, SectionLabel, Divider, EmptyState, Btn } from '../components/ui'
 import { InstallPrompt } from '../components/InstallPrompt'
 import { RoutineSummary } from '../components/RoutineSummary'
@@ -38,7 +39,7 @@ function fmtSleepTime(h: number | undefined): string {
 }
 
 function stalledCompound(sessions: Session[], type: WorkoutType) {
-  for (const ex of EXERCISES.filter(e => COMPOUND_IDS.has(e.id) && e.day.includes(type))) {
+  for (const ex of planFor(type).filter(e => COMPOUND_IDS.has(e.id))) {
     const past = sessions
       .filter(s => s.type === type && s.finishedAt)
       .sort((a, b) => b.startedAt - a.startedAt)
@@ -76,9 +77,7 @@ export default function Today() {
   const todayStr   = dateKey(today)
   const ystdayStr  = dateKey(subDays(today, 1))
 
-  const [proteinToday]  = useLocalStorage<Record<string, boolean>>(KEYS.proteinDay(todayStr), {})
-  const [customProtein] = useLocalStorage<ProteinItem[]>(KEYS.PROTEIN_CUSTOM, [])
-  const [proteinExtra]  = useLocalStorage<ProteinItem[]>(KEYS.proteinExtra(todayStr), [])
+  const [foodToday]     = useLocalStorage<FoodEntry[]>(KEYS.foodDay(todayStr), [])
   const [sleepLast]     = useLocalStorage<SleepEntry>(KEYS.sleepDay(ystdayStr), {})
   const [dayOverride, setDayOverride] = useLocalStorage<WorkoutType | 'REST' | null>(KEYS.dayOverride(todayStr), null)
 
@@ -98,9 +97,12 @@ export default function Today() {
     return !isBefore(d, weekStart) && !isAfter(d, today) && s.finishedAt
   }).length
 
-  const proteinItems  = [...PROTEIN_ITEMS, ...customProtein, ...proteinExtra]
-  const proteinGrams  = proteinItems.filter(it => proteinToday[it.id]).reduce((a, it) => a + (it.grams ?? 0), 0)
-  const proteinTarget = proteinTargetG()
+  // Summed from the hook's own value, so the tiles follow a log without a reload.
+  const eatenToday = foodToday.reduce(
+    (a, e) => ({ kcal: a.kcal + e.macros.kcal, protein: a.protein + e.macros.protein }),
+    { kcal: 0, protein: 0 },
+  )
+  const macroTargets = targets()
 
   const stall = workoutType ? stalledCompound(sessions, workoutType) : null
 
@@ -238,15 +240,21 @@ export default function Today() {
       <div>
         <SectionLabel right={`WEEK ${format(today, 'w')}`}>Snapshot</SectionLabel>
         <Card>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5 [&>*:last-child:nth-child(odd)]:col-span-2">
             <Stat label="Body weight" value={bodyWeight != null ? bodyWeight.toFixed(1) : '–'} unit={bodyWeight != null ? 'KG' : ''} />
             <Stat label="Gym streak"  value={streak} unit={streak !== 1 ? 'DAYS' : 'DAY'} accent />
             <Stat label="Sessions"    value={`${weekSessionCount}/${TRAINING_DAYS_PER_WEEK}`} unit="WK" />
             <Stat
+              label="Calories"
+              value={eatenToday.kcal}
+              unit={`/ ${macroTargets.kcal}`}
+              accent={eatenToday.kcal >= macroTargets.kcal}
+            />
+            <Stat
               label="Protein"
-              value={proteinGrams}
-              unit={`/ ${proteinTarget} G`}
-              accent={proteinGrams >= proteinTarget}
+              value={Math.round(eatenToday.protein)}
+              unit={`/ ${macroTargets.protein} G`}
+              accent={eatenToday.protein >= macroTargets.protein}
             />
           </div>
           {/* week dots */}

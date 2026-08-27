@@ -1,16 +1,19 @@
-import { format, startOfWeek } from 'date-fns'
+import { useMemo } from 'react'
+import { format, startOfWeek, subDays } from 'date-fns'
 import { Trophy, Activity } from 'lucide-react'
-import { EXERCISES, COMPOUND_IDS, MUSCLE_LABELS } from '../lib/data'
-import { parseKey } from '../lib/date'
+import { COMPOUND_IDS, MUSCLE_LABELS } from '../lib/data'
+import { exerciseById, resolveLibrary } from '../lib/library'
+import { dateKey, parseKey } from '../lib/date'
+import { KEYS } from '../lib/storage'
+import { dayMacros, targets, isMigratedDay } from '../lib/nutrition'
 import { bestE1RM, latestBodyWeightKg, logUnit, setVolume } from '../lib/stats'
-import type { Session, MeasurementEntry, ExerciseLog, MuscleGroup } from '../lib/types'
+import type { Session, MeasurementEntry, ExerciseLog, Macros, MuscleGroup } from '../lib/types'
 import { Card, SectionLabel, Pill, Divider } from './ui'
 
 // ─── Shared ───────────────────────────────────────────────────────────────────
 
-const NAME_BY_ID = new Map(EXERCISES.map(e => [e.id, e.name]))
 function exName(log: ExerciseLog): string {
-  return log.name ?? NAME_BY_ID.get(log.exerciseId) ?? log.exerciseId
+  return log.name ?? exerciseById(log.exerciseId)?.name ?? log.exerciseId
 }
 
 function Spark({ data, color = '#B0413E' }: { data: number[]; color?: string }) {
@@ -211,7 +214,7 @@ export function StrengthSection({ sessions }: { sessions: Session[] }) {
       const series = finished
         .map(s => topE1RM(s, id, bw))
         .filter((v): v is number => v != null)
-      return { id, name: NAME_BY_ID.get(id) ?? id, series }
+      return { id, name: exerciseById(id)?.name ?? id, series }
     })
     .filter(l => l.series.length > 0)
 
@@ -288,9 +291,11 @@ export function StrengthSection({ sessions }: { sessions: Session[] }) {
 
 // ─── Muscle-group balance ───────────────────────────────────────────────────────
 
-const GROUP_BY_ID = new Map<string, MuscleGroup[]>(
-  EXERCISES.filter(e => e.groups?.length).map(e => [e.id, e.groups!]),
-)
+// Built per call, not at import time: custom lifts carry groups too, and a
+// module-level map would leave every one of them out of the balance chart.
+function groupsById(): Map<string, MuscleGroup[]> {
+  return new Map(resolveLibrary().filter(e => e.groups?.length).map(e => [e.id, e.groups!]))
+}
 
 const GROUP_ORDER: MuscleGroup[] = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core']
 
@@ -303,6 +308,7 @@ export function MuscleBalance({ sessions }: { sessions: Session[] }) {
   const start = startOfWeek(new Date(), { weekStartsOn: 1 })
   start.setDate(start.getDate() - 7 * (BALANCE_WEEKS - 1))
 
+  const byId = groupsById()
   const totals = new Map<MuscleGroup, { volume: number; sets: number }>(
     GROUP_ORDER.map(g => [g, { volume: 0, sets: 0 }]),
   )
@@ -311,8 +317,8 @@ export function MuscleBalance({ sessions }: { sessions: Session[] }) {
   for (const s of sessions) {
     if (!s.finishedAt || parseKey(s.date) < start) continue
     for (const ex of s.exercises) {
-      const groups = GROUP_BY_ID.get(ex.exerciseId)
-      if (!groups) continue                       // custom lift — no group mapping
+      const groups = byId.get(ex.exerciseId)
+      if (!groups) continue                       // lift with no group tagged
       const unit = logUnit(ex)
       const done = ex.sets.filter(st => st.done)
       if (done.length === 0) continue
@@ -371,5 +377,174 @@ export function MuscleBalance({ sessions }: { sessions: Session[] }) {
         )}
       </Card>
     </div>
+  )
+}
+
+// ─── Nutrition ──────────────────────────────────────────────────────────────
+// Calories are only interesting next to what the body did with them, so the
+// weight series shares this chart's date axis rather than living elsewhere.
+
+const NUTRITION_DAYS = 30
+
+function macroSeries(days: string[]) {
+  // `partial` marks a day rebuilt from the old protein checkboxes: it recorded
+  // which supplements were ticked, not what was eaten, so it is drawn faintly
+  // and left out of the averages rather than presented as a real intake.
+  return days.map(d => ({ ...dayMacros(d), partial: isMigratedDay(d) }))
+}
+
+/** A dual-axis chart: calorie bars against their target, weight as a line. */
+function CalorieChart({ days, kcal, partial, target, weights }: {
+  days: string[]
+  kcal: number[]
+  partial: boolean[]
+  target: number
+  weights: (number | null)[]
+}) {
+  const W = 320, H = 96, PAD_X = 4, PAD_TOP = 8, PAD_BOT = 14
+  const plotH = H - PAD_TOP - PAD_BOT
+  const top = Math.max(target * 1.25, ...kcal, 1)
+  const barW = (W - PAD_X * 2) / days.length
+
+  const known = weights.filter((w): w is number => w != null)
+  const wMin = known.length ? Math.min(...known) : 0
+  const wMax = known.length ? Math.max(...known) : 1
+  const wSpan = wMax - wMin || 1
+
+  // Weight is measured occasionally, not daily; carry the last reading forward
+  // so the line stays continuous instead of breaking into disconnected dots.
+  let carried: number | null = null
+  const wPts: [number, number][] = []
+  weights.forEach((w, i) => {
+    if (w != null) carried = w
+    if (carried == null) return
+    wPts.push([
+      PAD_X + barW * (i + 0.5),
+      PAD_TOP + (1 - (carried - wMin) / wSpan) * plotH,
+    ])
+  })
+  const wLine = wPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
+  const targetY = PAD_TOP + (1 - target / top) * plotH
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 96, display: 'block' }}>
+      {kcal.map((v, i) => {
+        const h = (v / top) * plotH
+        return (
+          <rect
+            key={i}
+            x={PAD_X + barW * i + barW * 0.15}
+            y={PAD_TOP + plotH - h}
+            width={barW * 0.7}
+            height={Math.max(v > 0 ? 1 : 0, h)}
+            rx={1}
+            className={v >= target ? 'fill-success' : 'fill-accent'}
+            opacity={v === 0 ? 0 : partial[i] ? 0.28 : 0.75}
+          />
+        )
+      })}
+      <line
+        x1={PAD_X} x2={W - PAD_X} y1={targetY} y2={targetY}
+        strokeWidth="1" strokeDasharray="3 3" className="stroke-text-faint"
+      />
+      {wPts.length > 1 && (
+        <path d={wLine} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="stroke-text-dim" />
+      )}
+      {wPts.length > 0 && (
+        <circle cx={wPts.at(-1)![0]} cy={wPts.at(-1)![1]} r={2.5} className="fill-text-dim" />
+      )}
+    </svg>
+  )
+}
+
+export function NutritionSection() {
+  const days = useMemo(() => {
+    const out: string[] = []
+    for (let i = NUTRITION_DAYS - 1; i >= 0; i--) out.push(dateKey(subDays(new Date(), i)))
+    return out
+  }, [])
+
+  const series = useMemo(() => macroSeries(days), [days])
+  const t = useMemo(() => targets(), [])
+
+  const weights = useMemo(() => {
+    let ms: MeasurementEntry[] = []
+    try { ms = JSON.parse(localStorage.getItem(KEYS.MEASUREMENTS) ?? '[]') } catch { ms = [] }
+    const byDate = new Map(ms.map(m => [m.date, m.weight]))
+    return days.map(d => byDate.get(d) ?? null)
+  }, [days])
+
+  // Every hook above this line: the section hides itself on an empty log, and a
+  // conditional return before a useMemo would break on the first entry logged.
+  const logged = series.filter(m => !m.partial && (m.kcal > 0 || m.protein > 0))
+  const partialCount = series.filter(m => m.partial).length
+  if (logged.length === 0 && partialCount === 0) return null
+
+  const avg = (pick: (m: Macros) => number) =>
+    logged.length === 0 ? 0 : Math.round(logged.reduce((a, m) => a + pick(m), 0) / logged.length)
+
+  const bars: { label: string; value: number; target: number }[] = [
+    { label: 'Protein', value: avg(m => m.protein), target: t.protein },
+    { label: 'Carbs',   value: avg(m => m.carbs),   target: t.carbs },
+    { label: 'Fat',     value: avg(m => m.fat),     target: t.fat },
+  ]
+
+  return (
+    <>
+      <SectionLabel right={`${logged.length} logged`}>Nutrition</SectionLabel>
+      <Card>
+        <div className="flex items-baseline justify-between mb-1">
+          <div>
+            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Average day</p>
+            <p className="font-serif text-[22px] text-text font-medium tracking-[-0.03em] mt-0.5">
+              {logged.length > 0 ? `${avg(m => m.kcal)} kcal` : 'Nothing logged yet'}
+            </p>
+          </div>
+          <p className="font-mono text-[11px] text-text-dim text-right leading-[16px]">
+            target {t.kcal}
+            <span className="block text-text-faint">weight ——</span>
+          </p>
+        </div>
+
+        <CalorieChart
+          days={days}
+          kcal={series.map(m => m.kcal)}
+          partial={series.map(m => m.partial)}
+          target={t.kcal}
+          weights={weights}
+        />
+
+        <p className="font-mono text-[9px] text-text-faint uppercase tracking-[0.08em] flex justify-between mt-1">
+          <span>{format(parseKey(days[0]), 'MMM d')}</span>
+          <span>{format(parseKey(days.at(-1)!), 'MMM d')}</span>
+        </p>
+
+        {partialCount > 0 && (
+          <p className="font-sans text-[11px] text-text-faint leading-[15px] mt-2">
+            {partialCount} faded {partialCount === 1 ? 'day was' : 'days were'} carried over from
+            protein-only logging — those totals are a floor, so they sit outside the average.
+          </p>
+        )}
+
+        <Divider className="my-3.5" />
+
+        <div className="grid grid-cols-3 gap-3">
+          {bars.map(b => (
+            <div key={b.label}>
+              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">{b.label}</p>
+              <p className="font-mono text-[17px] text-text font-medium tracking-[-0.02em] mt-0.5">
+                {b.value}<span className="text-[11px] text-text-dim"> / {b.target} g</span>
+              </p>
+              <div className="h-[3px] rounded-pill bg-panel-inset overflow-hidden mt-1.5">
+                <div
+                  className={`h-full ${b.value >= b.target ? 'bg-success' : 'bg-accent'}`}
+                  style={{ width: `${Math.min(100, b.target > 0 ? (b.value / b.target) * 100 : 0)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </>
   )
 }

@@ -1,98 +1,36 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { format } from 'date-fns'
-import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight, Pencil, Search, X, StickyNote, LineChart, Minus } from 'lucide-react'
+import { Plus, Trophy, Flame, Clock, Dumbbell, ArrowRight, Pencil, X, StickyNote, LineChart, Minus, ArrowUp } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { EXERCISES, COMPOUND_IDS, DAY_LABELS } from '../lib/data'
+import { DAY_LABELS } from '../lib/data'
 import { useLogDate } from '../lib/dateContext'
 import { useRestTimer, restAutoStart } from '../lib/restTimer'
 import { todayKey, parseKey } from '../lib/date'
 import { workoutTypeFor } from '../lib/schedule'
-import { setVolume, latestBodyWeightKg, stepFor, unitLabels, formatSet } from '../lib/stats'
+import { setVolume, latestBodyWeightKg, formatSet } from '../lib/stats'
+import {
+  planFor, planIdsFor, setPlan, exerciseById,
+  skipStreak, resetSkipStreak, bumpSkipStreak, dropFromPlan, swapInPlan,
+} from '../lib/library'
+import {
+  prefillFor, applyBump, parseRepRange, stepFor, unitLabels,
+} from '../lib/progression'
+import type { Bump } from '../lib/progression'
 import type {
-  Session, WorkoutType, LiveSet, LiveLog, WorkoutDraft, Exercise, ExerciseLog, LoadUnit,
+  Session, WorkoutType, LiveSet, LiveLog, WorkoutDraft, Exercise, LoadUnit,
 } from '../lib/types'
 import { Card, Pill, Btn, Divider } from '../components/ui'
 import { DateStrip } from '../components/DateStrip'
 import { ExerciseHistorySheet } from '../components/ExerciseHistory'
+import { ExercisePicker } from '../components/ExercisePicker'
+import { useToast } from '../lib/toast'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Default per-day session — excludes optional (picker-only) lifts.
-function getExercisesForDay(type: WorkoutType) {
-  return EXERCISES.filter(e => e.day.includes(type) && !e.optional)
-}
-
-// Full library for the picker: this day's lifts first, then everything else.
-function libraryForDay(type: WorkoutType): Exercise[] {
-  const day = EXERCISES.filter(e => e.day.includes(type))
-  const others = EXERCISES.filter(e => !e.day.includes(type))
-  return [...day, ...others]
-}
-
-// Every past appearance of a lift, newest first. Deliberately not filtered by
-// workout type — a lift you moved to another day still carries its history.
-function pastLogs(sessions: Session[], exerciseId: string): { session: Session; log: ExerciseLog }[] {
-  return sessions
-    .filter(s => s.finishedAt !== null)
-    .sort((a, b) => b.startedAt - a.startedAt)
-    .map(s => {
-      const log = s.exercises.find(e => e.exerciseId === exerciseId)
-      return log ? { session: s, log } : null
-    })
-    .filter((x): x is { session: Session; log: ExerciseLog } => x !== null)
-}
-
-// Starting numbers for a lift the app has never seen logged.
-function blankSet(unit: LoadUnit): { w: number; r: number } {
-  if (unit === 'time') return { w: 0, r: 30 }
-  if (unit === 'bodyweight') return { w: 0, r: 8 }
-  return { w: 20, r: 10 }
-}
-
-// Seed a fresh exercise with a progressive-overload suggestion: if every set
-// was completed last time, pre-fill the next target a small step heavier.
-// Timed holds progress on duration instead of load.
-function defaultSetsFor(ex: Exercise, sessions: Session[]): LiveSet[] {
-  const unit = ex.unit ?? 'kg'
-  const step = stepFor(unit, ex.category)
-
-  for (const { log } of pastLogs(sessions, ex.id)) {
-    const done = log.sets.filter(st => st.done)
-    if (done.length === 0) continue
-    const top = done.reduce((best, st) => (st.weight > best.weight ? st : best))
-    const allDone = log.sets.length > 0 && log.sets.every(st => st.done)
-    const targetW = allDone && unit !== 'time' ? top.weight + step.load : top.weight
-    const targetR = allDone && unit === 'time' ? top.reps + step.count : top.reps
-    // Row count comes from the plan, not from last time. Inheriting it would
-    // ratchet: add two extra sets once, fail to complete them, and every future
-    // session is seeded with those rows — which `allDone` then never satisfies,
-    // stalling progression permanently.
-    return Array.from({ length: ex.defaultSets }, () => ({
-      done: false, expW: top.weight, expR: top.reps, actW: targetW, actR: targetR,
-    }))
-  }
-
-  const b = blankSet(unit)
-  return Array.from({ length: ex.defaultSets }, () => ({
-    done: false, expW: b.w, expR: b.r, actW: b.w, actR: b.r,
-  }))
-}
-
-// Three sessions at an identical top weight = the lift has stopped moving.
-function isStalled(sessions: Session[], exerciseId: string): boolean {
-  if (!COMPOUND_IDS.has(exerciseId)) return false
-  const weights = pastLogs(sessions, exerciseId)
-    .slice(0, 3)
-    .map(({ log }) => {
-      const done = log.sets.filter(st => st.done)
-      return done.length ? Math.max(...done.map(st => st.weight)) : null
-    })
-    .filter((w): w is number => w !== null)
-  if (weights.length < 3) return false
-  return weights[0] === weights[1] && weights[1] === weights[2]
-}
+/** Sessions in a row a planned lift can be skipped before the card asks about it. */
+const SKIP_PROMPT_AFTER = 3
 
 // A set beats the expectation if it moved more load, or matched it for more reps.
 function beatsExpected(s: LiveSet): boolean {
@@ -276,7 +214,13 @@ function ExerciseCard({
   onAddSet,
   onSkip,
   onHistory,
-  stalled,
+  bump,
+  onAcceptBump,
+  onDismissBump,
+  streak,
+  onKeep,
+  onDrop,
+  onSwap,
   note,
   onNote,
 }: {
@@ -291,7 +235,13 @@ function ExerciseCard({
   onAddSet: () => void
   onSkip: () => void
   onHistory: () => void
-  stalled: boolean
+  bump: Bump | null
+  onAcceptBump: (b: Bump) => void
+  onDismissBump: () => void
+  streak: number
+  onKeep: () => void
+  onDrop: () => void
+  onSwap: () => void
   note: string
   onNote: (v: string) => void
 }) {
@@ -309,6 +259,10 @@ function ExerciseCard({
   const targetInc = !targetUp ? 0
     : isTime ? sets[0].actR - sets[0].expR
     : +(sets[0].actW - sets[0].expW).toFixed(2)
+  // Both prompts are for a lift you haven't started yet — once a set is logged
+  // the decision is made, and neither has anything left to offer.
+  const showBump = !!bump && completedCount === 0
+  const showDrift = streak >= SKIP_PROMPT_AFTER && completedCount === 0
 
   return (
     <div
@@ -333,7 +287,6 @@ function ExerciseCard({
             <span className="font-serif text-[17px] text-text font-medium tracking-[-0.02em]">
               {exercise.name}
             </span>
-            {stalled && <Pill color="warn">STALLED · 3</Pill>}
             {pr && <Pill color="accent">NEW PR</Pill>}
             {targetUp && <Pill color="success">TARGET +{targetInc}{isTime ? 'S' : 'KG'}</Pill>}
             {note.trim() && <Pill color="dim">NOTE</Pill>}
@@ -343,6 +296,26 @@ function ExerciseCard({
             <span className="opacity-40">·</span>
             <span>LAST: {last}</span>
           </div>
+
+          {showBump && (
+            <div className="flex items-center gap-1 mt-2">
+              <button
+                onClick={e => { e.stopPropagation(); onAcceptBump(bump!) }}
+                title={bump!.reason}
+                className="flex items-center gap-1 px-2 py-[3px] rounded-pill border border-accent bg-[var(--color-accent-soft)] font-mono text-[10px] text-accent uppercase tracking-[0.06em] font-medium cursor-pointer shrink-0"
+              >
+                <ArrowUp size={10} strokeWidth={2.5} />
+                {bump!.to}{isTime ? 's' : ' kg'} ready
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); onDismissBump() }}
+                aria-label="Not today"
+                className="w-5 h-5 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer text-text-faint hover:text-text-dim transition-colors shrink-0"
+              >
+                <X size={11} strokeWidth={2} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
@@ -358,6 +331,20 @@ function ExerciseCard({
           </button>
         </div>
       </div>
+
+      {/* ── Plan drift ── */}
+      {showDrift && (
+        <div className="mx-4 mb-3 px-3 py-2.5 rounded-card bg-panel-inset border border-[var(--color-panel-border)]">
+          <p className="font-sans text-[12px] text-text-dim leading-[17px]">
+            Skipped {streak} sessions running. Still training this?
+          </p>
+          <div className="flex gap-2 mt-2.5">
+            <Btn variant="secondary" onClick={onKeep} className="flex-1 !py-2 !text-[11px]">Keep</Btn>
+            <Btn variant="secondary" onClick={onDrop} className="flex-1 !py-2 !text-[11px]">Drop</Btn>
+            <Btn variant="secondary" onClick={onSwap} className="flex-1 !py-2 !text-[11px]">Swap</Btn>
+          </div>
+        </div>
+      )}
 
       {/* ── Expanded sets ── */}
       {isActive && (
@@ -531,7 +518,7 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
     const existing = sessions.find(s => s.date === date && s.finishedAt !== null)
     if (existing) {
       const type = existing.type
-      const defaults = getExercisesForDay(type)
+      const defaults = planFor(type)
       const log: LiveLog = {}
       const notes: Record<string, string> = {}
       const added: Exercise[] = []
@@ -542,7 +529,7 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
         if (el.note) notes[el.exerciseId] = el.note
         // Anything not a default day lift is an "added" exercise (library-optional or custom).
         if (!defaults.some(d => d.id === el.exerciseId)) {
-          const lib = EXERCISES.find(x => x.id === el.exerciseId)
+          const lib = exerciseById(el.exerciseId)
           added.push(lib ?? {
             id: el.exerciseId,
             name: el.name ?? 'Custom exercise',
@@ -554,7 +541,7 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
           })
         }
       })
-      defaults.forEach(ex => { if (!log[ex.id]) log[ex.id] = defaultSetsFor(ex, sessions) })
+      defaults.forEach(ex => { if (!log[ex.id]) log[ex.id] = prefillFor(ex, sessions).sets })
       const ordered = [...defaults, ...added]
       return {
         type, added, log, notes,
@@ -569,9 +556,9 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
 
   // 3. Fresh.
   const type = workoutTypeFor(date)
-  const exercises = getExercisesForDay(type)
+  const exercises = planFor(type)
   const log: LiveLog = {}
-  exercises.forEach(ex => { log[ex.id] = defaultSetsFor(ex, sessions) })
+  exercises.forEach(ex => { log[ex.id] = prefillFor(ex, sessions).sets })
   return {
     type, added: [], log, note: '', notes: {},
     activeId: exercises[0]?.id ?? null,
@@ -606,20 +593,48 @@ function WorkoutForDate({ date }: { date: string }) {
   const [elapsed, setElapsed] = useState(0)
   const [summary, setSummary] = useState<SummaryData | null>(null)
   const [showPicker, setShowPicker] = useState(false)
-  const [pickerSearch, setPickerSearch] = useState('')
-  const [addingCustom, setAddingCustom] = useState(false)
-  const [newExName, setNewExName] = useState('')
+  // Non-null while the picker is choosing a replacement for a skipped lift.
+  const [swapFor, setSwapFor] = useState<string | null>(null)
+  // Bumps waved off this session. Deliberately not persisted: next session
+  // recomputes from history, so an ignored offer returns if it is still earned.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  // dropFromPlan/resetSkipStreak write straight to localStorage, so the plan
+  // needs an explicit nudge to re-read. One screen writing its own key does not
+  // warrant a storage-event listener.
+  const [planVersion, setPlanVersion] = useState(0)
   const [showNote, setShowNote] = useState(!!init.note)
   const [showDiscard, setShowDiscard] = useState(false)
   const [historyFor, setHistoryFor] = useState<Exercise | null>(null)
   const rest = useRestTimer()
+  const toast = useToast()
   const bodyWeight = useMemo(() => latestBodyWeightKg(), [])
   const startRef = useRef<number | null>(init.startedAt)
   // Per-type stash so switching workout type (manual entry) doesn't lose what
   // you already filled — switch back and it's restored.
   const typeStash = useRef<Partial<Record<WorkoutType, { log: LiveLog; added: Exercise[]; notes: Record<string, string>; activeId: string | null }>>>({})
 
-  const exercises = [...getExercisesForDay(type), ...added]
+  const exercises = useMemo(
+    () => [...planFor(type), ...added],
+    // planVersion is the re-read trigger; the plan itself lives in localStorage.
+    [type, added, planVersion],
+  )
+
+  // Recomputed from history rather than stored, so editing a past day corrects
+  // every offer automatically.
+  const bumps = useMemo(() => {
+    const out: Record<string, Bump> = {}
+    for (const ex of exercises) {
+      const b = prefillFor(ex, sessions).bump
+      if (b) out[ex.id] = b
+    }
+    return out
+  }, [exercises, sessions])
+
+  const streaks = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const ex of exercises) out[ex.id] = skipStreak(ex.id)
+    return out
+  }, [exercises, planVersion])
 
   // Timer (live only)
   useEffect(() => {
@@ -698,33 +713,69 @@ function WorkoutForDate({ date }: { date: string }) {
     setActiveId(next ? next.id : null)
   }
 
-  const closePicker = () => {
-    setShowPicker(false); setPickerSearch(''); setAddingCustom(false); setNewExName('')
-  }
+  const closePicker = () => { setShowPicker(false); setSwapFor(null) }
 
-  const addFromLibrary = (ex: Exercise) => {
+  const handlePick = (ex: Exercise, wasExisting: boolean) => {
+    // Swapping replaces a lift in the day's saved plan, permanently. A lift
+    // added ad-hoc this session is not in the plan, so it is swapped in the
+    // session's own list instead — otherwise the row would silently stay put
+    // while the toast claimed otherwise.
+    if (swapFor) {
+      const inPlan = planFor(type).some(e => e.id === swapFor)
+      if (inPlan) swapInPlan(type, swapFor, ex.id)
+      else setAdded(prev => prev.map(e => (e.id === swapFor ? ex : e)))
+      setLog(prev => {
+        const { [swapFor]: _gone, ...rest } = prev
+        return { ...rest, [ex.id]: prefillFor(ex, sessions).sets }
+      })
+      resetSkipStreak(swapFor)
+      setPlanVersion(v => v + 1)
+      setActiveId(ex.id)
+      toast({ message: `Swapped in ${ex.name}` })
+      closePicker()
+      return
+    }
     if (exercises.some(e => e.id === ex.id)) { setActiveId(ex.id); closePicker(); return }
     setAdded(prev => [...prev, ex])
-    setLog(prev => ({ ...prev, [ex.id]: defaultSetsFor(ex, sessions) }))
+    setLog(prev => ({ ...prev, [ex.id]: prefillFor(ex, sessions).sets }))
     setActiveId(ex.id)
+    if (!wasExisting) toast({ message: `${ex.name} saved to your library` })
     closePicker()
   }
 
-  const handleAddCustom = () => {
-    const name = newExName.trim()
-    if (!name) return
-    const newEx: Exercise = {
-      id: crypto.randomUUID(), name,
-      defaultSets: 3, defaultReps: '10–12',
-      category: 'isolation', day: [type], optional: true,
-    }
-    setAdded(prev => [...prev, newEx])
-    setLog(prev => ({
-      ...prev,
-      [newEx.id]: Array.from({ length: 3 }, () => ({ done: false, expW: 20, expR: 10, actW: 20, actR: 10 })),
-    }))
-    setActiveId(newEx.id)
-    closePicker()
+  // Take an earned load increase: weight up, reps back to the bottom of the
+  // range. The inputs were never pre-filled with it, so nothing is overwritten
+  // unless the lifter asks for it.
+  const acceptBump = (ex: Exercise, bump: Bump) => {
+    const range = parseRepRange(ex.defaultReps)
+    setLog(prev => ({ ...prev, [ex.id]: applyBump(prev[ex.id] ?? [], bump, range?.min ?? 8) }))
+    setDismissed(prev => new Set(prev).add(ex.id))
+    navigator.vibrate?.(15)
+  }
+
+  const keepInPlan = (id: string) => { resetSkipStreak(id); setPlanVersion(v => v + 1) }
+
+  const dropLift = (id: string) => {
+    const name = exerciseById(id)?.name ?? 'Exercise'
+    const inPlan = planFor(type).some(e => e.id === id)
+    // Dropping edits the saved plan, not just this session, so it gets a way back.
+    const planBefore = planIdsFor(type)
+    const setsBefore = log[id]
+    if (inPlan) dropFromPlan(type, id)
+    else resetSkipStreak(id)
+    setLog(prev => { const { [id]: _gone, ...rest } = prev; return rest })
+    setAdded(prev => prev.filter(e => e.id !== id))
+    setPlanVersion(v => v + 1)
+    toast({
+      message: `${name} removed from ${type.toLowerCase()} days`,
+      actionLabel: 'Undo',
+      onAction: () => {
+        if (inPlan) setPlan(type, planBefore)
+        else { const ex = exerciseById(id); if (ex) setAdded(prev => [...prev, ex]) }
+        if (setsBefore) setLog(prev => ({ ...prev, [id]: setsBefore }))
+        setPlanVersion(v => v + 1)
+      },
+    })
   }
 
   // Switch workout type for a manual entry. Non-destructive: the current type's
@@ -741,9 +792,9 @@ function WorkoutForDate({ date }: { date: string }) {
       setNotes(stash.notes)
       setActiveId(stash.activeId)
     } else {
-      const ex = getExercisesForDay(next)
+      const ex = planFor(next)
       const nl: LiveLog = {}
-      ex.forEach(e => { nl[e.id] = defaultSetsFor(e, sessions) })
+      ex.forEach(e => { nl[e.id] = prefillFor(e, sessions).sets })
       setLog(nl)
       setAdded([])
       setNotes({})
@@ -782,6 +833,15 @@ function WorkoutForDate({ date }: { date: string }) {
       const copy = [...prev]; copy[idx] = session; return copy
     })
     clearDraft()
+
+    // Track lifts the plan keeps listing but the lifter keeps walking past.
+    // Counting "no completed sets" rather than the `skipped` flag is deliberate:
+    // the real logs contain a deadlift that was never flagged skipped and still
+    // had zero completed sets across fifteen sessions.
+    for (const ex of exercises) {
+      if ((log[ex.id] ?? []).some(s => s.done)) resetSkipStreak(ex.id)
+      else bumpSkipStreak(ex.id)
+    }
 
     const prs = exercises
       .filter(ex => (log[ex.id] || []).some(s => s.done && beatsExpected(s)))
@@ -830,7 +890,7 @@ function WorkoutForDate({ date }: { date: string }) {
         <Card>
           <p className="font-sans text-[14px] text-text-dim leading-[22px]">{DAY_LABELS[type]}</p>
           <p className="font-mono text-[11px] text-text-faint mt-2 tracking-[0.04em]">
-            {getExercisesForDay(type).length} exercises · tap Begin when you're ready
+            {planFor(type).length} exercises · tap Begin when you're ready
           </p>
         </Card>
         <Btn fullWidth onClick={() => setStarted(true)}>
@@ -885,86 +945,14 @@ function WorkoutForDate({ date }: { date: string }) {
         />
       )}
 
-      {/* ── Exercise picker ── */}
-      {showPicker && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
-          <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={closePicker} />
-          <div className="relative w-full max-w-md bg-panel border border-[var(--color-panel-border)] rounded-t-[24px] md:rounded-card-lg shadow-card flex flex-col max-h-[78vh] mb-0">
-            <div className="flex items-center justify-between px-5 pt-5 pb-3">
-              <p className="font-serif text-[18px] font-medium text-text tracking-[-0.02em]">Add exercise</p>
-              <button onClick={closePicker} className="w-7 h-7 flex items-center justify-center rounded-full bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer">
-                <X size={13} strokeWidth={2} className="text-text-dim" />
-              </button>
-            </div>
-
-            {addingCustom ? (
-              <div className="px-5 pb-6 flex flex-col gap-3">
-                <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Custom exercise name</p>
-                <input
-                  autoFocus
-                  value={newExName}
-                  onChange={e => setNewExName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleAddCustom(); if (e.key === 'Escape') setAddingCustom(false) }}
-                  placeholder="e.g. Cable Fly"
-                  className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3.5 py-3 font-sans text-[15px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
-                />
-                <div className="flex gap-2">
-                  <Btn onClick={handleAddCustom} disabled={!newExName.trim()} className="flex-1">Add</Btn>
-                  <Btn variant="secondary" onClick={() => { setAddingCustom(false); setNewExName('') }} className="flex-1">Back</Btn>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="px-5 pb-3">
-                  <div className="flex items-center gap-2 bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3 py-2.5">
-                    <Search size={15} strokeWidth={1.8} className="text-text-faint shrink-0" />
-                    <input
-                      autoFocus
-                      value={pickerSearch}
-                      onChange={e => setPickerSearch(e.target.value)}
-                      placeholder="Search exercises…"
-                      className="flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] text-text placeholder:text-text-faint"
-                    />
-                  </div>
-                </div>
-
-                <div className="overflow-y-auto px-3 pb-3 flex-1">
-                  {(() => {
-                    const q = pickerSearch.trim().toLowerCase()
-                    const present = new Set(exercises.map(e => e.id))
-                    const list = libraryForDay(type).filter(e => !present.has(e.id) && (!q || e.name.toLowerCase().includes(q)))
-                    if (list.length === 0) {
-                      return <p className="text-center font-sans text-[13px] text-text-dim py-8">No matches. Try a custom exercise below.</p>
-                    }
-                    return list.map(ex => {
-                      const onDay = ex.day.includes(type)
-                      return (
-                        <button
-                          key={ex.id}
-                          onClick={() => addFromLibrary(ex)}
-                          className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-card text-left bg-transparent border-none cursor-pointer hover:bg-panel-inset transition-colors"
-                        >
-                          <Plus size={14} strokeWidth={2} className="text-text-faint shrink-0" />
-                          <span className="flex-1 min-w-0 font-sans text-[14px] text-text font-medium truncate">{ex.name}</span>
-                          {!onDay && <Pill color="dim">{ex.day[0]}</Pill>}
-                          <span className="font-mono text-[10px] text-text-dim tracking-[0.04em] shrink-0">{ex.defaultReps}</span>
-                        </button>
-                      )
-                    })
-                  })()}
-                </div>
-
-                <button
-                  onClick={() => { setAddingCustom(true); setNewExName(pickerSearch) }}
-                  className="flex items-center justify-center gap-2 px-5 pt-4 pb-7 border-t border-[var(--color-divider)] bg-transparent border-x-0 border-b-0 font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] font-medium cursor-pointer"
-                >
-                  <Plus size={13} strokeWidth={1.8} /> Custom exercise
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <ExercisePicker
+        open={showPicker}
+        type={type}
+        title={swapFor ? `Swap ${exerciseById(swapFor)?.name ?? 'exercise'}` : 'Add exercise'}
+        present={new Set(exercises.map(e => e.id))}
+        onPick={handlePick}
+        onClose={closePicker}
+      />
 
       <DateStrip />
 
@@ -1058,7 +1046,13 @@ function WorkoutForDate({ date }: { date: string }) {
             onUnlog={si => unlogSet(ex.id, si)}
             onAddSet={() => addSet(ex.id)}
             onSkip={() => skipExercise(ex.id)}
-            stalled={isStalled(sessions, ex.id)}
+            bump={dismissed.has(ex.id) ? null : bumps[ex.id] ?? null}
+            onAcceptBump={b => acceptBump(ex, b)}
+            onDismissBump={() => setDismissed(prev => new Set(prev).add(ex.id))}
+            streak={streaks[ex.id] ?? 0}
+            onKeep={() => keepInPlan(ex.id)}
+            onDrop={() => dropLift(ex.id)}
+            onSwap={() => { setSwapFor(ex.id); setShowPicker(true) }}
             onHistory={() => setHistoryFor(ex)}
             note={notes[ex.id] ?? ''}
             onNote={v => setNotes(prev => ({ ...prev, [ex.id]: v }))}

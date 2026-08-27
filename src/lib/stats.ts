@@ -1,34 +1,42 @@
-import { EXERCISES } from './data'
+import { exerciseById } from './library'
 import { KEYS } from './storage'
 import type { Session, SetEntry, ExerciseLog, LoadUnit, MeasurementEntry } from './types'
 
 // ─── Units ───────────────────────────────────────────────────────────────────
 
-const UNIT_BY_ID = new Map<string, LoadUnit>(
-  EXERCISES.map(e => [e.id, e.unit ?? 'kg'] as const),
-)
+// Resolved per call rather than cached at import time: a module-level map built
+// from the seed catalog can never see a custom lift, so every bodyweight custom
+// resolved to 'kg' and recorded a fake load.
+export function unitFor(exerciseId: string): LoadUnit {
+  return exerciseById(exerciseId)?.unit ?? 'kg'
+}
 
 // Prefer the unit captured at log time (survives library edits & custom lifts).
 export function logUnit(log: ExerciseLog): LoadUnit {
-  return log.unit ?? UNIT_BY_ID.get(log.exerciseId) ?? 'kg'
-}
-
-export function unitFor(exerciseId: string): LoadUnit {
-  return UNIT_BY_ID.get(exerciseId) ?? 'kg'
+  return log.unit ?? unitFor(log.exerciseId)
 }
 
 // ─── Body weight ─────────────────────────────────────────────────────────────
 
-// Latest logged body weight, used to give bodyweight lifts a real load figure.
-// Reads storage directly so every volume call site agrees without prop-drilling.
-export function latestBodyWeightKg(): number {
+// The most recent measurement, or null when none has been recorded.
+// Reads storage directly so every call site agrees without prop-drilling.
+function latestMeasurement(): MeasurementEntry | null {
   try {
     const ms = JSON.parse(localStorage.getItem(KEYS.MEASUREMENTS) ?? '[]') as MeasurementEntry[]
-    const latest = [...ms].sort((a, b) => a.date.localeCompare(b.date)).at(-1)
-    return latest?.weight ?? 0
+    return [...ms].sort((a, b) => a.date.localeCompare(b.date)).at(-1) ?? null
   } catch {
-    return 0
+    return null
   }
+}
+
+// Latest logged body weight, used to give bodyweight lifts a real load figure.
+export function latestBodyWeightKg(): number {
+  return latestMeasurement()?.weight ?? 0
+}
+
+/** BMR from the most recent measurement, or 0 when none has been recorded. */
+export function latestBmr(): number {
+  return latestMeasurement()?.bmr ?? 0
 }
 
 // ─── Volume ──────────────────────────────────────────────────────────────────
@@ -95,14 +103,6 @@ export function formatSet(set: SetEntry, unit: LoadUnit): string {
   return `${set.weight} kg × ${set.reps}`
 }
 
-export function unitLabels(unit: LoadUnit): { load: string; count: string } {
-  if (unit === 'time') return { load: '', count: 'SEC' }
-  if (unit === 'bodyweight') return { load: '+KG', count: 'REPS' }
-  return { load: 'KG', count: 'REPS' }
-}
-
-// Step sizes for the +/- steppers, tuned per unit and lift category.
-export function stepFor(unit: LoadUnit, category: 'compound' | 'isolation'): { load: number; count: number } {
-  if (unit === 'time') return { load: 0, count: 10 }
-  return { load: category === 'compound' ? 2.5 : 1.25, count: 1 }
-}
+// Both moved to progression.ts to keep the module graph acyclic; re-exported
+// here so existing importers need no change.
+export { stepFor, unitLabels } from './progression'

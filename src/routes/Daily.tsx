@@ -1,18 +1,17 @@
 import { useState } from 'react'
-import { Plus, Moon, Clock, X, Sunrise } from 'lucide-react'
+import { Moon, Clock, Sunrise } from 'lucide-react'
 import { format, subDays, eachDayOfInterval } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
-import { PROTEIN_ITEMS, PROTEIN_QUICK_ADDS } from '../lib/data'
-import { proteinTargetG } from '../lib/nutrition'
 import { sleepDurationH } from '../lib/sleep'
 import { useLogDate } from '../lib/dateContext'
 import { parseKey, dateKey } from '../lib/date'
-import type { ProteinItem, SleepEntry } from '../lib/types'
-import { Card, PageTitle, Divider, Btn } from '../components/ui'
+import type { SleepEntry } from '../lib/types'
+import { Card, PageTitle, Divider } from '../components/ui'
 import { DateStrip } from '../components/DateStrip'
 import { MedicinesCard } from '../components/Medicines'
 import { SkincareCard } from '../components/Skincare'
+import { FoodDay } from '../components/FoodDay'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,273 +51,6 @@ function toX(h: number | undefined | null): number | null {
   let v = h
   if (v < 12) v += 24  // awake times cross midnight
   return Math.max(0, Math.min(100, ((v - WIN_START) / (WIN_END - WIN_START)) * 100))
-}
-
-// ─── ProgressRing ─────────────────────────────────────────────────────────────
-
-function ProgressRing({ value, total, size = 78, stroke = 5 }: {
-  value: number; total: number; size?: number; stroke?: number
-}) {
-  const r  = (size - stroke) / 2
-  const c  = 2 * Math.PI * r
-  const pct = total > 0 ? Math.min(1, value / total) : 0
-  const hit = total > 0 && value >= total
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1A1A1E" strokeWidth={stroke} />
-      <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none"
-        stroke={hit ? '#9CB084' : '#B0413E'} strokeWidth={stroke}
-        strokeDasharray={c} strokeDashoffset={c * (1 - pct)}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        style={{ transition: 'stroke-dashoffset 0.4s ease' }}
-      />
-      <text
-        x="50%" y="46%" dominantBaseline="central" textAnchor="middle"
-        fontFamily="JetBrains Mono, monospace" fontSize={size * 0.28}
-        fontWeight="500" fill="#EDEAE3"
-      >
-        {Math.round(value)}
-      </text>
-      <text
-        x="50%" y="68%" dominantBaseline="central" textAnchor="middle"
-        fontFamily="JetBrains Mono, monospace" fontSize={size * 0.15}
-        fill="#9A968D"
-      >
-        /{total} G
-      </text>
-    </svg>
-  )
-}
-
-// ─── Quick-add sheet ──────────────────────────────────────────────────────────
-// One-off foods for a single day — they don't join the standing daily plan.
-
-function QuickAddSheet({
-  onAdd,
-  onClose,
-}: {
-  onAdd: (label: string, grams: number) => void
-  onClose: () => void
-}) {
-  const [label, setLabel] = useState('')
-  const [grams, setGrams] = useState('')
-
-  const submit = () => {
-    const l = label.trim()
-    const g = parseFloat(grams)
-    if (!l) return
-    onAdd(l, isNaN(g) || g < 0 ? 0 : g)
-    onClose()
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
-      <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-panel border border-[var(--color-panel-border)] rounded-t-[24px] md:rounded-card-lg shadow-card flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
-          <p className="font-serif text-[18px] font-medium text-text tracking-[-0.02em]">Add food</p>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="w-7 h-7 flex items-center justify-center rounded-full bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer"
-          >
-            <X size={13} strokeWidth={2} className="text-text-dim" />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 px-5 pb-2">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-2.5">Common</p>
-          <div className="flex flex-wrap gap-1.5 mb-5">
-            {PROTEIN_QUICK_ADDS.map(q => (
-              <button
-                key={q.label}
-                onClick={() => { onAdd(q.label, q.grams); onClose() }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-pill bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer transition-colors hover:border-accent"
-              >
-                <span className="font-sans text-[13px] text-text">{q.label}</span>
-                <span className="font-mono text-[10px] text-accent">{q.grams}g</span>
-              </button>
-            ))}
-          </div>
-
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-2.5">Something else</p>
-          <div className="flex gap-2 items-end">
-            <div className="flex-1 min-w-0">
-              <input
-                autoFocus
-                value={label}
-                onChange={e => setLabel(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') submit() }}
-                placeholder="e.g. Fish curry"
-                className="w-full bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3.5 py-3 font-sans text-[15px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
-              />
-            </div>
-            <div className="w-[92px] shrink-0 flex items-center gap-1 bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3 py-3">
-              <input
-                value={grams}
-                onChange={e => setGrams(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') submit() }}
-                inputMode="decimal"
-                placeholder="0"
-                className="w-full min-w-0 bg-transparent border-none outline-none font-mono text-[15px] text-text placeholder:text-text-faint"
-              />
-              <span className="font-mono text-[11px] text-text-faint shrink-0">G</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-5 pt-3 pb-7 shrink-0">
-          <Btn fullWidth onClick={submit} disabled={!label.trim()}>Add</Btn>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── ProteinChecklist ─────────────────────────────────────────────────────────
-
-function ProteinChecklist({ date, isToday, label }: { date: string; isToday: boolean; label: string }) {
-  const [checked, setChecked] = useLocalStorage<Record<string, boolean>>(KEYS.proteinDay(date), {})
-  const [customItems] = useLocalStorage<ProteinItem[]>(KEYS.PROTEIN_CUSTOM, [])
-  const [extras, setExtras] = useLocalStorage<ProteinItem[]>(KEYS.proteinExtra(date), [])
-  const [showAdd, setShowAdd] = useState(false)
-
-  const target = proteinTargetG()
-  const plan = [...PROTEIN_ITEMS, ...customItems]
-  const allItems = [...plan, ...extras]
-  const doneItems = allItems.filter(it => checked[it.id])
-  const grams = doneItems.reduce((a, it) => a + (it.grams ?? 0), 0)
-  const remaining = Math.max(0, target - grams)
-
-  const toggle = (id: string) =>
-    setChecked(prev => ({ ...prev, [id]: !prev[id] }))
-
-  const addOneOff = (lbl: string, g: number) => {
-    const id = `x_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-    setExtras(prev => [...prev, { id, label: lbl, grams: g, oneOff: true }])
-    setChecked(prev => ({ ...prev, [id]: true }))
-  }
-
-  const removeExtra = (id: string) => {
-    setExtras(prev => prev.filter(x => x.id !== id))
-    setChecked(prev => {
-      const next = { ...prev }
-      delete next[id]
-      return next
-    })
-  }
-
-  const renderRow = (it: ProteinItem, isLast: boolean) => {
-    const on = !!checked[it.id]
-    return (
-      <div
-        key={it.id}
-        className={[
-          'w-full flex items-center gap-3.5 px-[18px] transition-colors',
-          on ? 'bg-[var(--color-accent-soft)]' : 'bg-transparent',
-          !isLast ? 'border-b border-[var(--color-divider)]' : '',
-        ].join(' ')}
-      >
-        <button
-          onClick={() => toggle(it.id)}
-          className="flex-1 min-w-0 flex items-center gap-3.5 py-3.5 text-left bg-transparent border-none cursor-pointer"
-        >
-          <div
-            className={[
-              'w-[22px] h-[22px] rounded-card flex items-center justify-center shrink-0 transition-colors',
-              on ? 'bg-accent' : 'bg-transparent border border-[var(--color-panel-border)]',
-            ].join(' ')}
-          >
-            {on && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6l3 3 5-5" stroke="#EDEAE3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </div>
-          <span className="flex-1 min-w-0 flex items-center gap-2">
-            <span
-              className={`font-sans text-[14px] font-medium transition-colors truncate ${on ? 'text-text-dim line-through decoration-text-faint' : 'text-text'}`}
-            >
-              {it.label}
-            </span>
-          </span>
-          <span className="flex items-center gap-2.5 shrink-0">
-            {it.time && (
-              <span className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">{it.time}</span>
-            )}
-            <span className={`font-mono text-[12px] tracking-[-0.01em] w-[34px] text-right ${on ? 'text-accent' : 'text-text-faint'}`}>
-              {it.grams ? `${it.grams}g` : '—'}
-            </span>
-          </span>
-        </button>
-        {it.oneOff && (
-          <button
-            onClick={() => removeExtra(it.id)}
-            aria-label={`Remove ${it.label}`}
-            className="w-6 h-6 -ml-1 flex items-center justify-center bg-transparent border-none cursor-pointer text-text-faint hover:text-danger transition-colors shrink-0"
-          >
-            <X size={12} strokeWidth={2} />
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <Card noPad>
-      {/* Header */}
-      <div className="px-[18px] pt-[18px] pb-3.5 flex items-center gap-4 border-b border-[var(--color-divider)]">
-        <ProgressRing value={grams} total={target} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
-              {isToday ? 'Protein today' : `Protein · ${label}`}
-            </p>
-            {doneItems.length > 0 && (
-              <button
-                onClick={() => setChecked({})}
-                className="bg-transparent border-none font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] cursor-pointer hover:text-danger transition-colors p-0"
-              >
-                Reset
-              </button>
-            )}
-          </div>
-          <p className="font-serif text-[24px] text-text font-medium tracking-[-0.03em] mt-1">
-            {remaining === 0 ? 'Target hit.' : `${remaining} g to go.`}
-          </p>
-          <p className="font-sans text-[12px] text-text-dim mt-1">
-            {doneItems.length}/{allItems.length} logged · target <span className="text-text">{target} g</span>
-          </p>
-        </div>
-      </div>
-
-      {/* The standing daily plan */}
-      {plan.map((it, i) => renderRow(it, i === plan.length - 1 && extras.length === 0))}
-
-      {/* One-off foods for this day */}
-      {extras.length > 0 && (
-        <>
-          <div className="px-[18px] py-2 bg-panel-inset/40 border-y border-[var(--color-divider)]">
-            <p className="font-mono text-[9px] text-text-faint uppercase tracking-[0.1em]">
-              Added {isToday ? 'today' : 'this day'}
-            </p>
-          </div>
-          {extras.map((it, i) => renderRow(it, i === extras.length - 1))}
-        </>
-      )}
-
-      <button
-        onClick={() => setShowAdd(true)}
-        className="w-full py-3 px-[18px] bg-transparent border-none border-t border-dashed border-[var(--color-divider)] flex items-center justify-center gap-2 text-text-dim font-sans text-[12px] uppercase tracking-[0.08em] font-medium cursor-pointer"
-      >
-        <Plus size={12} strokeWidth={1.8} /> Add food
-      </button>
-
-      {showAdd && <QuickAddSheet onAdd={addOneOff} onClose={() => setShowAdd(false)} />}
-    </Card>
-  )
 }
 
 // ─── SleepTracker ─────────────────────────────────────────────────────────────
@@ -692,7 +424,7 @@ export default function Daily() {
         ))}
       </div>
 
-      {section === 'food'  && <ProteinChecklist key={`p-${activeDate}`} date={activeDate} isToday={isToday} label={label} />}
+      {section === 'food'  && <FoodDay key={`f-${activeDate}`} date={activeDate} isToday={isToday} label={label} />}
       {section === 'sleep' && <SleepTracker     key={`s-${activeDate}`} date={activeDate} isToday={isToday} label={label} />}
       {section === 'meds'  && <MedicinesCard    key={`m-${activeDate}`} date={activeDate} isToday={isToday} />}
       {section === 'skin'  && <SkincareCard     key={`k-${activeDate}`} date={activeDate} isToday={isToday} />}

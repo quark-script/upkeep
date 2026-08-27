@@ -7,6 +7,8 @@ import Progress from './routes/Progress'
 import Daily from './routes/Daily'
 import History from './routes/History'
 import Settings from './routes/Settings'
+import ExerciseSettings from './routes/ExerciseSettings'
+import NutritionSettings from './routes/NutritionSettings'
 import Onboarding from './routes/Onboarding'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { KEYS } from './lib/storage'
@@ -41,6 +43,8 @@ export default function App() {
                   <Route path="/daily"    element={<Daily />} />
                   <Route path="/history"  element={<History />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/settings/exercises" element={<ExerciseSettings />} />
+                  <Route path="/settings/nutrition" element={<NutritionSettings />} />
                 </Routes>
               </div>
             </main>

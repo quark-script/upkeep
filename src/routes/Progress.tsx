@@ -7,7 +7,7 @@ import { dateKey, parseKey } from '../lib/date'
 import { calcStreak, dayTypeFor, TRAINING_DAYS_PER_WEEK } from '../lib/schedule'
 import type { Session, MeasurementEntry } from '../lib/types'
 import { Card, Stat, SectionLabel, PageTitle, Btn, Pill, Divider, EmptyState } from '../components/ui'
-import { BodyStory, StrengthSection, MuscleBalance } from '../components/Insights'
+import { BodyStory, StrengthSection, MuscleBalance, NutritionSection } from '../components/Insights'
 
 // ─── Heatmap ─────────────────────────────────────────────────────────────────
 
@@ -351,6 +351,8 @@ export default function Progress() {
 
         {/* ── Strength progression + PRs ── */}
         <StrengthSection sessions={sessions} />
+
+        <NutritionSection />
 
         {/* ── Where the work actually went ── */}
         <MuscleBalance sessions={sessions} />

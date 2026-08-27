@@ -1,16 +1,19 @@
 import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Trash2, ChevronRight, FileJson, FileText, ClipboardList,
-  Save, Upload, Timer, Volume2, Zap,
+  Save, Upload, Timer, Volume2, Zap, Dumbbell, Apple, History, AlertTriangle,
 } from 'lucide-react'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS, PREFIX } from '../lib/storage'
 import { PageTitle, Card, Divider, Btn } from '../components/ui'
-import { reportToJSON, sessionsToCSV, measurementsToCSV, sleepToCSV, proteinToCSV, buildWeeklyDigest } from '../lib/export'
+import { reportToJSON, sessionsToCSV, measurementsToCSV, sleepToCSV, foodToCSV, buildWeeklyDigest } from '../lib/export'
 import { backupToJSON, markBackedUp, lastBackupAt, restoreBackup, type RestoreMode } from '../lib/backup'
 import { REST_DEFAULT } from '../lib/restTimer'
+import { snapshots, restoreSnapshot, discardSnapshot, migrationFailures, type SnapshotInfo } from '../lib/migrations'
 import { useToast } from '../lib/toast'
+import CloudSync from '../components/CloudSync'
 import type { Session, MeasurementEntry, Settings as AppSettings } from '../lib/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -104,7 +107,7 @@ function ResetModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: 
       <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
         <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Reset all data?</p>
         <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-4">
-          This permanently deletes every session, measurement, sleep log, and protein entry. Cannot be undone.
+          This permanently deletes every session, measurement, sleep log, and food entry on this device. Cannot be undone. Your cloud backup is not affected.
         </p>
         <p className="font-sans text-[12px] text-warn leading-[18px] mb-6">
           Download a backup first if there's any chance you'll want this data back.
@@ -175,6 +178,10 @@ export default function Settings() {
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [settings, setSettings] = useLocalStorage<AppSettings>(KEYS.SETTINGS, { theme: 'vault' })
   const [showReset, setShowReset] = useState(false)
+  const navigate = useNavigate()
+  const [snaps, setSnaps] = useState<SnapshotInfo[]>(() => snapshots())
+  const [confirmRestore, setConfirmRestore] = useState<SnapshotInfo | null>(null)
+  const failed = migrationFailures()
   const [exported, setExported]   = useState<'json' | 'csv' | null>(null)
   const [digestDone, setDigestDone] = useState(false)
   const [pending, setPending] = useState<{ name: string; text: string } | null>(null)
@@ -246,7 +253,7 @@ export default function Settings() {
       { name: `upkeep-sessions-${date}.csv`,     content: sessionsToCSV(sessions)    },
       { name: `upkeep-measurements-${date}.csv`,  content: measurementsToCSV(measurements) },
       { name: `upkeep-sleep-${date}.csv`,          content: sleepToCSV()               },
-      { name: `upkeep-protein-${date}.csv`,        content: proteinToCSV()             },
+      { name: `upkeep-food-${date}.csv`,           content: foodToCSV()                },
     ]
     files.forEach((f, i) => {
       setTimeout(() => downloadFile(f.content, f.name, 'text/csv'), i * 350)
@@ -282,6 +289,106 @@ export default function Settings() {
             </div>
           ))}
         </div>
+
+        {/* ── Training ── */}
+        <div>
+          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
+            Training
+          </p>
+          <Card noPad>
+            <RowItem
+              icon={Dumbbell}
+              label="Exercises"
+              sub="Day plans, rep ranges, custom lifts"
+              onClick={() => navigate('/settings/exercises')}
+            />
+            <Divider />
+            <RowItem
+              icon={Apple}
+              label="Nutrition"
+              sub="Calorie and macro targets, your foods"
+              onClick={() => navigate('/settings/nutrition')}
+            />
+          </Card>
+        </div>
+
+        {/* ── Cloud backup ── */}
+        <CloudSync onRestore={(name, text) => setPending({ name, text })} />
+
+        {failed.length > 0 && (
+          <div>
+            <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
+              Attention
+            </p>
+            <Card>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 bg-warn/10">
+                  <AlertTriangle size={15} strokeWidth={1.7} className="text-warn" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-sans text-[14px] text-text font-medium">
+                    A data update didn't finish
+                  </p>
+                  <p className="font-sans text-[12.5px] text-text-dim leading-[17px] mt-1">
+                    Some of your older records may still look wrong. Nothing was lost — the app
+                    will try again next time you open it. Download a backup first if you plan to
+                    keep using it today.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Restore points ── */}
+        {snaps.length > 0 && (
+          <div>
+            <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
+              Restore points
+            </p>
+            <Card noPad>
+              {snaps.map((snap, i) => (
+                <div key={snap.id}>
+                  {i > 0 && <Divider />}
+                  <div className="px-4 py-3.5 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 bg-panel-inset">
+                      <History size={15} strokeWidth={1.6} className="text-text-dim" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-sans text-[14px] text-text font-medium truncate">
+                        Before {snap.id.replace(/-v\d+$/, '').replace(/-/g, ' ')}
+                      </p>
+                      <p className="font-mono text-[11px] text-text-dim mt-0.5">
+                        {format(snap.at, 'MMM d')} · {Math.round(snap.bytes / 1024)} KB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setConfirmRestore(snap)}
+                      className="px-3 py-2 rounded-card bg-transparent border border-[var(--color-panel-border)] font-sans text-[11px] uppercase tracking-[0.04em] text-text-dim cursor-pointer shrink-0"
+                    >
+                      Restore
+                    </button>
+                    <button
+                      onClick={() => {
+                        discardSnapshot(snap.id)
+                        setSnaps(snapshots())
+                        toast({ message: 'Restore point deleted' })
+                      }}
+                      aria-label="Delete restore point"
+                      className="w-11 h-11 flex items-center justify-center rounded-card bg-transparent border-none cursor-pointer text-text-faint hover:text-danger transition-colors shrink-0"
+                    >
+                      <Trash2 size={14} strokeWidth={1.7} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </Card>
+            <p className="font-sans text-[11.5px] text-text-faint leading-[16px] px-1 mt-2">
+              Saved automatically before the app reorganised your old records. Delete them once
+              everything looks right — they take up real space.
+            </p>
+          </div>
+        )}
 
         {/* ── Backup ── */}
         <div>
@@ -391,7 +498,7 @@ export default function Settings() {
             <RowItem
               icon={FileText}
               label={exported === 'csv' ? 'Downloaded!' : 'Export as CSV'}
-              sub="Four files — sessions, measurements, sleep, protein"
+              sub="Four files — sessions, measurements, sleep, food"
               onClick={handleExportCSV}
             />
           </Card>
@@ -440,6 +547,39 @@ export default function Settings() {
           </Card>
         </div>
       </div>
+
+      {confirmRestore && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-5">
+          <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setConfirmRestore(null)} />
+          <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-5">
+            <p className="font-serif text-[19px] text-text font-medium tracking-[-0.02em]">
+              Roll back to this point?
+            </p>
+            <p className="font-sans text-[13px] text-text-dim leading-[18px] mt-2">
+              Everything goes back to how it was on {format(confirmRestore.at, 'MMM d')}, before the
+              app reorganised your records. <span className="text-text">Anything you logged since
+              then is deleted.</span> Download a backup first if you're not sure.
+            </p>
+            <div className="flex gap-2 mt-4">
+              <Btn variant="secondary" onClick={() => setConfirmRestore(null)} className="flex-1">Cancel</Btn>
+              <Btn
+                onClick={() => {
+                  const ok = restoreSnapshot(confirmRestore.id)
+                  setConfirmRestore(null)
+                  if (!ok) { toast({ message: "That restore point couldn't be read." }); return }
+                  // Migrations run at startup, so the app has to come back up to
+                  // re-apply them against the restored data.
+                  sessionStorage.setItem('upkeep:restore-note', 'Rolled back to the earlier version.')
+                  window.location.reload()
+                }}
+                className="flex-1"
+              >
+                Roll back
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showReset && (
         <ResetModal
