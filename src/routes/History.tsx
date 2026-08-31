@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, subDays } from 'date-fns'
-import { Dumbbell, Moon, CheckSquare, ChevronRight, ArrowRight, StickyNote } from 'lucide-react'
+import { Dumbbell, Moon, CheckSquare, ChevronRight, ArrowRight, StickyNote, Pill, Sparkles } from 'lucide-react'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { useLogDate } from '../lib/dateContext'
@@ -10,19 +10,45 @@ import { sessionVolume, logUnit, formatSet, topSet } from '../lib/stats'
 import { dayMacros, targets } from '../lib/nutrition'
 import { sleepDurationH } from '../lib/sleep'
 import { exerciseName } from '../lib/export'
-import type { Session, SleepEntry } from '../lib/types'
+import { isDue } from '../lib/routines'
+import type { Session, SleepEntry, Medicine, SkinStep } from '../lib/types'
 import { Card, PageTitle, EmptyState, Divider, Btn } from '../components/ui'
 
 const WINDOW_STEP = 30
 
+/**
+ * One logged entity on one day. A day row is built only from the entities that
+ * actually have data, so nothing is ever asserted about an entity you did not
+ * touch — logging dinner must not make the day claim anything about training.
+ */
+interface Fact {
+  entity: 'workout' | 'diet' | 'sleep' | 'meds' | 'skin'
+  icon: typeof Dumbbell
+  text: string
+  /** Where tapping this fact goes to edit it. */
+  to: string
+  /** Sub-tab to open when `to` is /daily. */
+  section?: 'food' | 'sleep' | 'meds' | 'skin'
+}
+
 interface DaySummary {
   key: string
   session: Session | null
-  proteinG: number
-  proteinTarget: number
-  kcal: number
-  sleepHours: number | null
+  facts: Fact[]
 }
+
+/**
+ * The five things Upkeep tracks, in a fixed order. They are peers: no entity is
+ * the headline and none is a sub-field of another, which is what keeps a day
+ * with only skincare on it as legitimate as a day with a workout.
+ */
+const ENTITIES = [
+  { key: 'workout', label: 'Workout',  icon: Dumbbell,    to: '/workout', section: undefined as string | undefined },
+  { key: 'diet',    label: 'Food',     icon: CheckSquare, to: '/daily',   section: 'food' },
+  { key: 'sleep',   label: 'Sleep',    icon: Moon,        to: '/daily',   section: 'sleep' },
+  { key: 'meds',    label: 'Meds',     icon: Pill,        to: '/daily',   section: 'meds' },
+  { key: 'skin',    label: 'Skincare', icon: Sparkles,    to: '/daily',   section: 'skin' },
+] as const
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -49,20 +75,94 @@ export default function History() {
   )
   const hasOlder = oldestSession != null && oldestSession < dateKey(subDays(today, windowDays - 1))
 
+  // Routine definitions are read once, not per day: they are the denominator
+  // for "2 of 3 taken", and re-reading them 30 times would be pure waste.
+  const medicines = readJSON<Medicine[]>(KEYS.MEDICINES, []).filter(m => m?.active)
+  const skinSteps = readJSON<SkinStep[]>(KEYS.SKINCARE, []).filter(st => st?.active)
+
   const days: DaySummary[] = []
   for (let i = 0; i < windowDays; i++) {
     const key = dateKey(subDays(today, i))
+    const facts: Fact[] = []
+
+    // ── workout ──
     const session = sessions.find(s => s.date === key && s.finishedAt !== null) ?? null
+    if (session) {
+      facts.push({
+        entity: 'workout',
+        icon: Dumbbell,
+        text: `${session.type} · ${Math.round(sessionVolume(session)).toLocaleString()} kg`,
+        to: '/workout',
+      })
+    }
+
+    // ── diet ──
     const { protein: proteinG, kcal } = dayMacros(key)
+    if (kcal > 0 || proteinG > 0) {
+      facts.push({
+        entity: 'diet',
+        icon: CheckSquare,
+        text: `${Math.round(kcal)} kcal · ${Math.round(proteinG)}g P${
+          proteinTarget > 0 && proteinG >= proteinTarget ? ' ✓' : ''
+        }`,
+        to: '/daily',
+        section: 'food',
+      })
+    }
+
+    // ── sleep ──
     const sleep = readJSON<SleepEntry>(KEYS.sleepDay(key), {})
     const sleepHours = sleepDurationH(sleep)
-    if (session || kcal > 0 || proteinG > 0 || sleepHours != null || sleep.phone != null) {
-      days.push({ key, session, proteinG, proteinTarget, kcal, sleepHours })
+    if (sleepHours != null || sleep.phone != null || sleep.bed != null || sleep.quality != null) {
+      facts.push({
+        entity: 'sleep',
+        icon: Moon,
+        text: sleepHours != null ? `${sleepHours.toFixed(1)}h` : 'logged',
+        to: '/daily',
+        section: 'sleep',
+      })
     }
+
+    // ── meds ──
+    // Counted against what was actually due that day, so a weekly dose does not
+    // read as "1 of 5" on the six days it was never expected.
+    const medChecks = readJSON<Record<string, boolean>>(KEYS.medsDay(key), {})
+    const medsTaken = Object.values(medChecks).filter(Boolean).length
+    if (medsTaken > 0) {
+      const due = medicines.filter(m => isDue(m.schedule, key)).length
+      facts.push({
+        entity: 'meds',
+        icon: Pill,
+        text: due > 0 ? `${medsTaken}/${due}` : `${medsTaken}`,
+        to: '/daily',
+        section: 'meds',
+      })
+    }
+
+    // ── skincare ──
+    const skinChecks = readJSON<Record<string, boolean>>(KEYS.skinDay(key), {})
+    const skinDone = Object.values(skinChecks).filter(Boolean).length
+    if (skinDone > 0) {
+      const due = skinSteps.filter(st => isDue(st.schedule, key)).length
+      facts.push({
+        entity: 'skin',
+        icon: Sparkles,
+        text: due > 0 ? `${skinDone}/${due}` : `${skinDone}`,
+        to: '/daily',
+        section: 'skin',
+      })
+    }
+
+    if (facts.length > 0) days.push({ key, session, facts })
   }
 
-  const goEdit = (key: string, to: string) => {
+  // Daily remembers its last sub-tab in storage, so writing the section before
+  // navigating is what makes "meds on the 12th" land on meds and not on food.
+  const goEdit = (key: string, to: string, section?: string) => {
     setActiveDate(key)
+    if (section) {
+      try { localStorage.setItem(KEYS.DAILY_SECTION, JSON.stringify(section)) } catch {}
+    }
     navigate(to)
   }
 
@@ -75,7 +175,7 @@ export default function History() {
           <EmptyState
             icon={Dumbbell}
             title="Nothing logged yet."
-            sub="Workouts, food, and sleep you log will show up here, newest first."
+            sub="Workouts, food, sleep, meds and skincare you log will show up here, newest first."
           />
         </Card>
       ) : (
@@ -84,7 +184,6 @@ export default function History() {
             const date = parseKey(d.key)
             const isToday = d.key === todayKey()
             const open = openKey === d.key
-            const vol = d.session ? sessionVolume(d.session) : 0
             return (
               <div key={d.key}>
                 {i > 0 && <Divider />}
@@ -100,16 +199,20 @@ export default function History() {
                       {format(date, 'd')}
                     </p>
                   </div>
-                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <p className="font-sans text-[13px] text-text font-medium">
-                      {d.session
-                        ? <>{d.session.type} · <span className="font-mono text-text-dim font-normal">{Math.round(vol).toLocaleString()} kg</span></>
-                        : <span className="text-text-dim font-normal">No workout</span>}
-                    </p>
-                    <p className="font-mono text-[10px] text-text-dim tracking-[0.03em] flex items-center gap-2.5">
-                      <span className="flex items-center gap-1"><CheckSquare size={10} strokeWidth={1.8} />{Math.round(d.kcal)} kcal · {Math.round(d.proteinG)}g P</span>
-                      <span className="flex items-center gap-1"><Moon size={10} strokeWidth={1.8} />{d.sleepHours != null ? `${d.sleepHours.toFixed(1)}h` : '—'}</span>
-                    </p>
+                  {/* One chip per entity that has data. An entity you did not log
+                      contributes nothing — no chip, no dash, no "none". */}
+                  <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                    {d.facts.map(f => (
+                      <span
+                        key={f.entity}
+                        className={`flex items-center gap-1 font-mono text-[11px] tracking-[0.02em] ${
+                          f.entity === 'workout' ? 'text-text font-medium' : 'text-text-dim'
+                        }`}
+                      >
+                        <f.icon size={11} strokeWidth={1.8} className="text-text-faint shrink-0" />
+                        {f.text}
+                      </span>
+                    ))}
                   </div>
                   <ChevronRight
                     size={16} strokeWidth={1.8}
@@ -146,26 +249,24 @@ export default function History() {
                           })}
                       </div>
                     )}
-                    <button
-                      onClick={() => goEdit(d.key, '/workout')}
-                      className="flex items-center justify-between px-3.5 py-3 rounded-card bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2.5 font-sans text-[13px] text-text font-medium">
-                        <Dumbbell size={15} strokeWidth={1.7} className="text-text-dim" />
-                        {d.session ? 'Edit workout' : 'Add workout'}
-                      </span>
-                      <ArrowRight size={14} strokeWidth={1.8} className="text-text-faint" />
-                    </button>
-                    <button
-                      onClick={() => goEdit(d.key, '/daily')}
-                      className="flex items-center justify-between px-3.5 py-3 rounded-card bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer"
-                    >
-                      <span className="flex items-center gap-2.5 font-sans text-[13px] text-text font-medium">
-                        <CheckSquare size={15} strokeWidth={1.7} className="text-text-dim" />
-                        Edit food &amp; sleep
-                      </span>
-                      <ArrowRight size={14} strokeWidth={1.8} className="text-text-faint" />
-                    </button>
+                    {/* Every entity is reachable from every day, in the same order,
+                        whether or not it was logged. These are actions, not claims:
+                        an unlogged entity offers a way in without asserting a "no". */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {ENTITIES.map(e => (
+                        <button
+                          key={e.key}
+                          onClick={() => goEdit(d.key, e.to, e.section)}
+                          className="flex items-center justify-between px-3 py-2.5 rounded-card bg-panel-inset border border-[var(--color-panel-border)] cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2 font-sans text-[12.5px] text-text font-medium truncate">
+                            <e.icon size={14} strokeWidth={1.7} className="text-text-dim shrink-0" />
+                            {e.label}
+                          </span>
+                          <ArrowRight size={13} strokeWidth={1.8} className="text-text-faint shrink-0" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
