@@ -237,15 +237,33 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# Supabase's own email sender cannot be used here: on the free tier it refuses
+# any template override, which is what turns sign-in into a 6-digit code rather
+# than a link. It also caps sending at 2/hour no matter what `[auth.rate_limit]`
+# says — two mistyped codes and the only account is locked out for an hour.
+#
+# The password is a Resend API key, read from the environment at `config push`
+# time so it never lands in the repo. Keep it in `.env.smtp.local` (gitignored).
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(SUPABASE_AUTH_EMAIL_SMTP_PASS)"
+# Sent from the verified `dhanpulse.in` domain on the Resend account behind that
+# key. Note the coupling: that domain and key are work infra, so rotating the key
+# there silently breaks sign-in here. A personal Resend account would decouple it.
+admin_email = "upkeep@dhanpulse.in"
+sender_name = "Upkeep"
+
+# The sign-in code email. `signInWithOtp` renders the *magic link* template,
+# and Supabase's stock version of it prints only `{{ .ConfirmationURL }}` — no
+# code anywhere in the message, which is why the app asked for six digits the
+# email never contained. Overriding it to print `{{ .Token }}` is what actually
+# makes this a code flow. Deploy with `supabase config push`.
+[auth.email.template.magic_link]
+subject = "Your Upkeep sign-in code"
+content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
