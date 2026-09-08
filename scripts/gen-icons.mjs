@@ -43,6 +43,11 @@ function makeSVG(size) {
 </svg>`
 }
 
+// Keep the browser favicon and installed-app icons on one source of truth.
+// This prevents an old product monogram from surviving a future icon refresh.
+writeFileSync(resolve(PUBLIC, 'favicon.svg'), makeSVG(64))
+console.log('✓ favicon.svg')
+
 for (const size of [192, 512]) {
   const svg = makeSVG(size)
   const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: size } })

@@ -1,4 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0E0E10"/>
-  <text x="32" y="44" text-anchor="middle" font-family="monospace" font-weight="700" font-size="26" fill="#B0413E">GZ</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- bg -->
+  <rect width="64" height="64" rx="14.08" fill="#0E0E10"/>
+  <!-- subtle oxblood glow -->
+  <radialGradient id="g" cx="35%" cy="20%" r="65%">
+    <stop offset="0%" stop-color="#B0413E" stop-opacity="0.35"/>
+    <stop offset="100%" stop-color="#B0413E" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="64" height="64" rx="14.08" fill="url(#g)"/>
+  <!-- oxblood inner square -->
+  <rect
+    x="14.08" y="14.08"
+    width="35.84" height="35.84"
+    rx="6.4"
+    fill="#B0413E"
+  />
+  <!-- UK monogram -->
+  <text
+    x="32" y="39.2"
+    font-family="'JetBrains Mono', monospace"
+    font-weight="700"
+    font-size="20"
+    fill="#EDEAE3"
+    text-anchor="middle"
+    letter-spacing="-1"
+  >UK</text>
 </svg>
