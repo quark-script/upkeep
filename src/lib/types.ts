@@ -229,9 +229,6 @@ export interface SkinStep {
 
 export interface Settings {
   theme: 'vault' | 'ledger' | 'spec'
-  restSeconds?: number      // rest-timer default; absent = 90
-  restSound?: boolean       // chime when rest ends; absent = true
-  restAuto?: boolean        // start rest automatically on each logged set; absent = false
   proteinTargetG?: number   // daily protein goal in grams; absent = derived from body weight
 }
 

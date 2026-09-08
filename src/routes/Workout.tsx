@@ -6,7 +6,6 @@ import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { DAY_LABELS } from '../lib/data'
 import { useLogDate } from '../lib/dateContext'
-import { useRestTimer, restAutoStart } from '../lib/restTimer'
 import { todayKey, parseKey } from '../lib/date'
 import { workoutTypeFor } from '../lib/schedule'
 import { setVolume, latestBodyWeightKg, formatSet } from '../lib/stats'
@@ -73,6 +72,11 @@ function NumField({
           if (!isNaN(n)) onChange(n)
         }}
         onFocus={e => e.target.select()}
+        onBlur={() => {
+          // Never leave a blank/partial display while a different number is saved.
+          const parsed = Number(raw)
+          if (raw.trim() === '' || !Number.isFinite(parsed)) setRaw(String(value))
+        }}
         // Grows with the value — a fixed width clipped decimals like "72.5".
         style={{ width: `${Math.max(2.4, raw.length + 0.5)}ch` }}
         className={`bg-transparent border-none outline-none p-0 m-0 font-mono text-[18px] font-medium tracking-[-0.02em] text-left ${done ? 'text-accent' : 'text-text'}`}
@@ -605,7 +609,6 @@ function WorkoutForDate({ date }: { date: string }) {
   const [showNote, setShowNote] = useState(!!init.note)
   const [showDiscard, setShowDiscard] = useState(false)
   const [historyFor, setHistoryFor] = useState<Exercise | null>(null)
-  const rest = useRestTimer()
   const toast = useToast()
   const bodyWeight = useMemo(() => latestBodyWeightKg(), [])
   const startRef = useRef<number | null>(init.startedAt)
@@ -684,7 +687,6 @@ function WorkoutForDate({ date }: { date: string }) {
   const logSet = (id: string, setIdx: number) => {
     setLog(prev => ({ ...prev, [id]: prev[id].map((s, i) => (i === setIdx ? { ...s, done: true } : s)) }))
     navigator.vibrate?.(15)
-    if (mode === 'live' && restAutoStart()) rest.start()
     const currentSets = log[id] || []
     const allDoneAfter = currentSets.every((s, i) => i === setIdx || s.done)
     if (allDoneAfter) {
@@ -975,24 +977,9 @@ function WorkoutForDate({ date }: { date: string }) {
           </button>
         </div>
         {mode === 'live' ? (
-          <div className="text-right flex flex-col items-end gap-1.5">
-            <div>
-              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Elapsed</p>
-              <p className="font-mono text-[24px] text-text font-medium tracking-[-0.02em]">{fmtElapsed(elapsed)}</p>
-            </div>
-            {/* Manual by default — you decide when a rest actually starts. */}
-            <button
-              onClick={() => (rest.remaining == null ? rest.start() : rest.stop())}
-              className={[
-                'flex items-center gap-1.5 px-2.5 py-1 rounded-pill border font-mono text-[10px] uppercase tracking-[0.08em] cursor-pointer transition-colors',
-                rest.remaining == null
-                  ? 'bg-panel-inset border-[var(--color-panel-border)] text-text-dim'
-                  : 'bg-[var(--color-accent-soft)] border-accent text-accent',
-              ].join(' ')}
-            >
-              <Clock size={11} strokeWidth={1.9} />
-              {rest.remaining == null ? 'Start rest' : 'Stop rest'}
-            </button>
+          <div className="text-right">
+            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">Elapsed</p>
+            <p className="font-mono text-[24px] text-text font-medium tracking-[-0.02em]">{fmtElapsed(elapsed)}</p>
           </div>
         ) : null}
       </div>
@@ -1092,7 +1079,12 @@ function WorkoutForDate({ date }: { date: string }) {
       )}
 
       {/* ── Finish / Save ── */}
-      <Btn fullWidth onClick={finishWorkout}>
+      {doneSets === 0 && (
+        <p className="-mb-2 text-center font-sans text-[12px] text-text-dim">
+          Log at least one set to save this workout.
+        </p>
+      )}
+      <Btn fullWidth onClick={finishWorkout} disabled={doneSets === 0}>
         {mode === 'manual'
           ? <>{editingId ? 'Save changes' : 'Save entry'} · {Math.round(volume).toLocaleString()} kg</>
           : <>Finish workout · {Math.round(volume).toLocaleString()} kg</>}
