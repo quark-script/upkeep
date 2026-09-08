@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Trash2, ChevronRight, FileJson, FileText, ClipboardList,
-  Save, Upload, Timer, Volume2, Zap, Dumbbell, Apple, History, AlertTriangle,
+  Save, Upload, Dumbbell, Apple, History, AlertTriangle,
 } from 'lucide-react'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
@@ -10,11 +10,10 @@ import { KEYS, PREFIX } from '../lib/storage'
 import { PageTitle, Card, Divider, Btn } from '../components/ui'
 import { reportToJSON, sessionsToCSV, measurementsToCSV, sleepToCSV, foodToCSV, buildWeeklyDigest } from '../lib/export'
 import { backupToJSON, markBackedUp, lastBackupAt, restoreBackup, type RestoreMode } from '../lib/backup'
-import { REST_DEFAULT } from '../lib/restTimer'
 import { snapshots, restoreSnapshot, discardSnapshot, migrationFailures, type SnapshotInfo } from '../lib/migrations'
 import { useToast } from '../lib/toast'
 import CloudSync from '../components/CloudSync'
-import type { Session, MeasurementEntry, Settings as AppSettings } from '../lib/types'
+import type { Session, MeasurementEntry } from '../lib/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -27,8 +26,6 @@ function downloadFile(content: string, filename: string, mime: string) {
   a.click()
   URL.revokeObjectURL(url)
 }
-
-const REST_CHOICES = [60, 90, 120, 150, 180]
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -58,42 +55,6 @@ function RowItem({
         {sub && <p className="font-mono text-[11px] text-text-dim mt-0.5 tracking-[0.02em]">{sub}</p>}
       </div>
       <ChevronRight size={14} strokeWidth={1.6} className="text-text-faint shrink-0" />
-    </button>
-  )
-}
-
-// ─── Toggle ───────────────────────────────────────────────────────────────────
-
-function Toggle({
-  icon: Icon,
-  label,
-  sub,
-  on,
-  onToggle,
-}: {
-  icon: React.ElementType
-  label: string
-  sub?: string
-  on: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      onClick={onToggle}
-      role="switch"
-      aria-checked={on}
-      className="w-full flex items-center gap-2.5 bg-transparent border-none cursor-pointer p-0 text-left"
-    >
-      <Icon size={15} strokeWidth={1.7} className="text-text-dim shrink-0" />
-      <span className="flex-1 min-w-0">
-        <span className="font-sans text-[13px] text-text font-medium block">{label}</span>
-        {sub && <span className="font-sans text-[12px] text-text-dim leading-[16px] block mt-0.5">{sub}</span>}
-      </span>
-      <span
-        className={`w-[42px] h-[24px] rounded-pill shrink-0 flex items-center px-[3px] transition-colors ${on ? 'bg-accent justify-end' : 'bg-panel-inset border border-[var(--color-panel-border)] justify-start'}`}
-      >
-        <span className="w-[18px] h-[18px] rounded-pill bg-text block" />
-      </span>
     </button>
   )
 }
@@ -176,7 +137,6 @@ export default function Settings() {
   const toast = useToast()
   const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
-  const [settings, setSettings] = useLocalStorage<AppSettings>(KEYS.SETTINGS, { theme: 'vault' })
   const [showReset, setShowReset] = useState(false)
   const navigate = useNavigate()
   const [snaps, setSnaps] = useState<SnapshotInfo[]>(() => snapshots())
@@ -187,10 +147,6 @@ export default function Settings() {
   const [pending, setPending] = useState<{ name: string; text: string } | null>(null)
   const [backupAt, setBackupAt] = useState<number | null>(() => lastBackupAt())
   const fileRef = useRef<HTMLInputElement>(null)
-
-  const restSeconds = settings.restSeconds ?? REST_DEFAULT
-  const restSound   = settings.restSound !== false
-  const restAuto    = settings.restAuto === true
 
   function handleBackup() {
     downloadFile(backupToJSON(), `upkeep-backup-${format(new Date(), 'yyyy-MM-dd')}.json`, 'application/json')
@@ -422,53 +378,6 @@ export default function Settings() {
               Everything lives in this browser's storage. Clearing site data wipes it — keep a backup file.
             </p>
           )}
-        </div>
-
-        {/* ── Rest timer ── */}
-        <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
-            Rest timer
-          </p>
-          <Card>
-            <div className="flex items-center gap-2.5 mb-1">
-              <Timer size={15} strokeWidth={1.7} className="text-text-dim shrink-0" />
-              <span className="font-sans text-[13px] text-text font-medium flex-1">Rest length</span>
-            </div>
-            <p className="font-sans text-[12px] text-text-dim leading-[17px] mb-3">
-              Start it yourself from the workout screen whenever you want it.
-            </p>
-            <div className="flex gap-1.5">
-              {REST_CHOICES.map(secs => (
-                <button
-                  key={secs}
-                  onClick={() => setSettings(prev => ({ ...prev, restSeconds: secs }))}
-                  className={[
-                    'flex-1 py-2 rounded-card border font-mono text-[12px] font-medium cursor-pointer transition-colors',
-                    secs === restSeconds
-                      ? 'bg-[var(--color-accent-soft)] border-accent text-accent'
-                      : 'bg-panel-inset border-[var(--color-panel-border)] text-text-dim',
-                  ].join(' ')}
-                >
-                  {secs < 120 ? `${secs}s` : `${secs / 60}m`}
-                </button>
-              ))}
-            </div>
-            <Divider className="my-3.5" />
-            <Toggle
-              icon={Zap}
-              label="Auto-start after each set"
-              sub="Off suits logging a whole exercise at once, or catching up later"
-              on={restAuto}
-              onToggle={() => setSettings(prev => ({ ...prev, restAuto: !restAuto }))}
-            />
-            <Divider className="my-3.5" />
-            <Toggle
-              icon={Volume2}
-              label="Chime when rest ends"
-              on={restSound}
-              onToggle={() => setSettings(prev => ({ ...prev, restSound: !restSound }))}
-            />
-          </Card>
         </div>
 
         {/* ── Share ── */}
