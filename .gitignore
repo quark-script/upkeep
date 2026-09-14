@@ -38,3 +38,5 @@ Thumbs.db
 
 # Brainstorm visual companion
 .superpowers/
+# Local Git worktrees
+.worktrees/
