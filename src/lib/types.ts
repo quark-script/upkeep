@@ -170,10 +170,10 @@ export interface MacroTargets {
   fat: number
 }
 
-/** Only the fields the user has pinned; the rest are derived. */
-export interface TargetOverrides extends Partial<MacroTargets> {
-  activityFactor?: number    // BMR multiplier; absent = 1.5
-  goalDelta?: number         // kcal above/below maintenance; absent = +200
+/** Historical target overrides read only while upgrading existing installs. */
+export interface LegacyTargetOverrides extends Partial<MacroTargets> {
+  activityFactor?: number    // historical BMR multiplier
+  goalDelta?: number         // historical kcal adjustment
 }
 
 // One night's sleep, keyed by the date you went to bed — so `awake` is the
@@ -201,8 +201,8 @@ export type MedForm = 'tablet' | 'capsule' | 'sachet' | 'drops' | 'injection' | 
 
 export interface Medicine {
   id: string
-  name: string          // "Magnesium"
-  dose?: string         // "250 mg", "60,000 IU"
+  name: string          // display name
+  dose?: string         // dose or strength
   form?: MedForm
   schedule: Schedule
   slot: DaySlot
@@ -216,8 +216,8 @@ export type SkinKind = 'cleanser' | 'active' | 'moisturiser' | 'sunscreen' | 'ot
 
 export interface SkinStep {
   id: string
-  label: string         // "Niacinamide 10% serum"
-  brand?: string        // "Brand name"
+  label: string         // step name
+  brand?: string        // optional brand
   kind?: SkinKind
   routine: SkinRoutine
   order: number         // application order within the routine

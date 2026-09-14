@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ChevronLeft, ChevronDown, ChevronUp, Search, X, AlertTriangle, Trash2,
+  ChevronLeft, Search, X, AlertTriangle, Trash2,
 } from 'lucide-react'
 import {
-  targets, setTargets, clearTarget, userFoods, resolveFoods, saveFood, deleteFood,
+  targets, setTargets, clearTargets, userFoods, resolveFoods, saveFood, deleteFood,
   setFoodPrefs, clearFoodPrefs, hasFoodPrefs, searchFoods,
-  DEFAULT_ACTIVITY, DEFAULT_GOAL_DELTA,
 } from '../lib/nutrition'
 import { useToast } from '../lib/toast'
 import type { Food, MacroTargets, Macros } from '../lib/types'
@@ -18,6 +17,75 @@ const TARGET_FIELDS: { key: keyof MacroTargets; label: string; unit: string }[] 
   { key: 'carbs',   label: 'Carbs',    unit: 'g' },
   { key: 'fat',     label: 'Fat',      unit: 'g' },
 ]
+
+type TargetForm = Record<keyof MacroTargets, string>
+
+function TargetEditor({ initial, onSaved }: {
+  initial: MacroTargets | null
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState<TargetForm>({
+    kcal: initial ? String(initial.kcal) : '',
+    protein: initial ? String(initial.protein) : '',
+    carbs: initial ? String(initial.carbs) : '',
+    fat: initial ? String(initial.fat) : '',
+  })
+  const values: MacroTargets = {
+    kcal: parseInt(form.kcal, 10),
+    protein: parseInt(form.protein, 10),
+    carbs: parseInt(form.carbs, 10),
+    fat: parseInt(form.fat, 10),
+  }
+  const valid = Object.values(values).every(Number.isFinite) &&
+    values.kcal > 0 && values.protein >= 0 && values.carbs >= 0 && values.fat >= 0
+
+  const save = () => {
+    if (!valid) return
+    setTargets(values)
+    onSaved()
+  }
+
+  const clear = () => {
+    clearTargets()
+    setForm({ kcal: '', protein: '', carbs: '', fat: '' })
+    onSaved()
+  }
+
+  return (
+    <div>
+      <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
+        Daily targets
+      </p>
+      <Card>
+        <p className="font-sans text-[12.5px] text-text-dim leading-[18px] mb-4">
+          Enter targets that fit your own plan. Upkeep will not estimate them for you.
+        </p>
+        <div className="flex flex-col gap-3.5">
+          {TARGET_FIELDS.map(({ key, label, unit }) => (
+            <label key={key} className="flex items-center gap-3">
+              <span className="flex-1 font-sans text-[13.5px] text-text font-medium">{label}</span>
+              <input
+                inputMode="numeric"
+                value={form[key]}
+                onChange={e => setForm(current => ({ ...current, [key]: e.target.value }))}
+                placeholder="—"
+                aria-label={label}
+                className="w-[92px] bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-2.5 py-2 font-mono text-[15px] text-center text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
+              />
+              <span className="font-mono text-[10px] text-text-faint uppercase w-[34px]">{unit}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-4">
+          <Btn onClick={save} disabled={!valid} className="flex-1">
+            {initial ? 'Save targets' : 'Set targets'}
+          </Btn>
+          {initial && <Btn variant="secondary" onClick={clear}>Clear</Btn>}
+        </div>
+      </Card>
+    </div>
+  )
+}
 
 // ─── Food editor ─────────────────────────────────────────────────────────────
 
@@ -140,7 +208,6 @@ export default function NutritionSettings() {
   const [version, setVersion] = useState(0)
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Food | null>(null)
-  const [showWorking, setShowWorking] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<Food | null>(null)
 
   const bump = () => setVersion(v => v + 1)
@@ -159,7 +226,6 @@ export default function NutritionSettings() {
     return [...hits.filter(f => f.source === 'custom'), ...hits.filter(f => f.source !== 'custom')]
   }, [mine, all, query, version])
 
-  const reconciles = Math.abs(t.protein * 4 + t.carbs * 4 + t.fat * 9 - t.kcal) <= 5
 
   return (
     <>
@@ -173,120 +239,7 @@ export default function NutritionSettings() {
 
         <PageTitle kicker="Nutrition" title="Targets & foods." />
 
-        {/* ── Targets ── */}
-        <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
-            Daily targets
-          </p>
-          <Card>
-            <div className="flex flex-col gap-3.5">
-              {TARGET_FIELDS.map(({ key, label, unit }) => (
-                <div key={key} className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-sans text-[13.5px] text-text font-medium flex items-center gap-2">
-                      {label}
-                      {t.derived[key] ? <Pill color="dim">AUTO</Pill> : <Pill color="accent">SET</Pill>}
-                    </p>
-                    {!t.derived[key] && (
-                      <button
-                        onClick={() => { clearTarget(key); bump() }}
-                        className="mt-0.5 bg-transparent border-none p-0 font-mono text-[10px] text-text-faint uppercase tracking-[0.06em] cursor-pointer hover:text-text-dim transition-colors"
-                      >
-                        Back to auto
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    inputMode="numeric"
-                    defaultValue={String(t[key])}
-                    key={`${key}-${version}`}
-                    onBlur={e => {
-                      const v = parseInt(e.target.value, 10)
-                      if (Number.isFinite(v) && v > 0 && v !== t[key]) { setTargets({ [key]: v }); bump() }
-                      else e.target.value = String(t[key])
-                    }}
-                    className={`w-[92px] bg-panel-inset border rounded-card px-2.5 py-2 font-mono text-[15px] text-center outline-none focus:border-accent transition-colors ${
-                      t.derived[key] ? 'border-[var(--color-panel-border)] text-text-dim' : 'border-accent text-text'
-                    }`}
-                  />
-                  <span className="font-mono text-[10px] text-text-faint uppercase w-[34px]">{unit}</span>
-                </div>
-              ))}
-            </div>
-
-            <Divider className="my-4" />
-
-            <button
-              onClick={() => setShowWorking(o => !o)}
-              className="w-full flex items-center justify-between bg-transparent border-none p-0 cursor-pointer"
-            >
-              <span className="font-sans text-[12.5px] text-text-dim">How calories are calculated</span>
-              {showWorking
-                ? <ChevronUp size={14} strokeWidth={1.8} className="text-text-faint" />
-                : <ChevronDown size={14} strokeWidth={1.8} className="text-text-faint" />}
-            </button>
-
-            {showWorking && (
-              <div className="mt-3 flex flex-col gap-3.5">
-                <p className="font-mono text-[11.5px] text-text-dim leading-[17px]">
-                  {t.basis.bmr > 0
-                    ? `BMR ${t.basis.bmr} × ${t.basis.activityFactor} ${t.basis.goalDelta >= 0 ? '+' : '−'} ${Math.abs(t.basis.goalDelta)} = `
-                    : `No BMR logged — using 1500 × ${t.basis.activityFactor} ${t.basis.goalDelta >= 0 ? '+' : '−'} ${Math.abs(t.basis.goalDelta)} = `}
-                  <span className="text-text">{Math.round((t.basis.bmr > 0 ? t.basis.bmr : 1500) * t.basis.activityFactor + t.basis.goalDelta)} kcal</span>
-                  {!t.derived.kcal && <span className="text-text-faint"> (overridden above)</span>}
-                </p>
-
-                <div>
-                  <div className="flex justify-between font-mono text-[11px] text-text-dim mb-1.5">
-                    <span>Activity</span>
-                    <span className="text-text">{t.basis.activityFactor.toFixed(1)}×</span>
-                  </div>
-                  <input
-                    type="range" min={1.2} max={1.9} step={0.1}
-                    value={t.basis.activityFactor}
-                    onChange={e => { setTargets({ activityFactor: parseFloat(e.target.value) }); bump() }}
-                    className="w-full accent-accent"
-                  />
-                  <p className="font-sans text-[11px] text-text-faint mt-1">
-                    1.2 desk-bound · 1.5 training most days · 1.9 heavy labour
-                  </p>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-mono text-[11px] text-text-dim mb-1.5">
-                    <span>Goal</span>
-                    <span className="text-text">
-                      {t.basis.goalDelta > 0 ? '+' : ''}{t.basis.goalDelta} kcal
-                    </span>
-                  </div>
-                  <input
-                    type="range" min={-500} max={500} step={50}
-                    value={t.basis.goalDelta}
-                    onChange={e => { setTargets({ goalDelta: parseInt(e.target.value, 10) }); bump() }}
-                    className="w-full accent-accent"
-                  />
-                  <p className="font-sans text-[11px] text-text-faint mt-1">
-                    Below maintenance to cut, above to build.
-                  </p>
-                </div>
-
-                {(t.basis.activityFactor !== DEFAULT_ACTIVITY || t.basis.goalDelta !== DEFAULT_GOAL_DELTA) && (
-                  <button
-                    onClick={() => { clearTarget('activityFactor'); clearTarget('goalDelta'); bump() }}
-                    className="self-start bg-transparent border-none p-0 font-mono text-[10px] text-text-faint uppercase tracking-[0.06em] cursor-pointer"
-                  >
-                    Reset to {DEFAULT_ACTIVITY}× and +{DEFAULT_GOAL_DELTA}
-                  </button>
-                )}
-
-                <p className="font-sans text-[11.5px] text-text-faint leading-[16px]">
-                  Carbs fill whatever calories protein and fat leave over, so the four always agree
-                  {reconciles ? '.' : ' — pin fewer of them if they stop adding up.'}
-                </p>
-              </div>
-            )}
-          </Card>
-        </div>
+        <TargetEditor key={version} initial={t} onSaved={bump} />
 
         {/* ── Needs review ── */}
         {review.length > 0 && (

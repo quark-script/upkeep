@@ -7,7 +7,7 @@ Personal health tracker PWA. Built for one user, runs entirely offline, no backe
 - **Workout logger** — Push/Pull/Legs split auto-detected from the day. Log sets with weight and reps, with +/- steppers so you rarely touch the keypad. Handles barbell load, bodyweight lifts (added weight) and timed holds. Tracks previous session values, pre-fills a progressive-overload target, flags stalled compound lifts after 3 sessions, and shows a PR badge when you beat a lift. Tap any lift for its full history and estimated-1RM trend.
 - **Progress** — 26-week consistency heatmap, transformation silhouette, estimated-1RM trends, PR timeline, muscle-group balance over the last 4 weeks, body trend charts and a tape measurement table.
 - **Daily** — Four sections:
-  - *Food* — protein logged in **grams** against a target derived from body weight, with one-tap adds for common foods.
+  - *Food* — calories and macros logged against optional user-set targets, with a searchable food library.
   - *Sleep* — phone away → in bed → awake, keyed by the night you went to bed, plus a 1–5 rested rating and a prompt to fill in last night's wake-up.
   - *Meds* — what you take, the dose, and how often (daily / weekly / every N days / as needed), with 30-day adherence.
   - *Skin* — ordered morning and night routines; actives can run on alternate days.

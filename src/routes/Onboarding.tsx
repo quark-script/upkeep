@@ -3,6 +3,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS } from '../lib/storage'
 import { todayKey } from '../lib/date'
 import { Btn } from '../components/ui'
+import { initializeNewUserTracking } from '../lib/onboarding'
 import type { Profile, MeasurementEntry } from '../lib/types'
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
@@ -179,6 +180,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   function handleDone(measurement: MeasurementEntry | null) {
+    initializeNewUserTracking()
     setProfile({ name })
     if (measurement) {
       setMeasurements([measurement])

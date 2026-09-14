@@ -65,7 +65,7 @@ function MedEditor({
               autoFocus={!onDelete}
               value={draft.name}
               onChange={e => set('name', e.target.value)}
-              placeholder="e.g. Magnesium"
+              placeholder="Medication name"
               className={field}
             />
           </div>
@@ -147,8 +147,7 @@ function MedEditor({
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 export function MedicinesCard({ date, isToday }: { date: string; isToday: boolean }) {
-  // Seeded into storage at startup by seedRoutineDefaults(); an empty list here
-  // means the user deleted everything, so the defaults must not creep back.
+  // An empty list is a valid regimen for someone who does not take medicines.
   const [meds, setMeds] = useLocalStorage<Medicine[]>(KEYS.MEDICINES, [])
   const [taken, setTaken] = useLocalStorage<Record<string, boolean>>(KEYS.medsDay(date), {})
   const [editing, setEditing] = useState<Medicine | null>(null)

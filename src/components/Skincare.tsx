@@ -58,7 +58,7 @@ function StepEditor({
               autoFocus={!onDelete}
               value={draft.label}
               onChange={e => set('label', e.target.value)}
-              placeholder="e.g. Salicylic Acid 02% Serum"
+              placeholder="e.g. Evening serum"
               className={field}
             />
           </div>
@@ -69,7 +69,7 @@ function StepEditor({
               <input
                 value={draft.brand ?? ''}
                 onChange={e => set('brand', e.target.value)}
-                placeholder="Brand"
+                placeholder="Brand (optional)"
                 className={field}
               />
             </div>
@@ -140,7 +140,7 @@ function StepEditor({
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 export function SkincareCard({ date, isToday }: { date: string; isToday: boolean }) {
-  // Seeded into storage at startup by seedRoutineDefaults().
+  // An empty list is a valid routine for someone who does not track skincare.
   const [steps, setSteps] = useLocalStorage<SkinStep[]>(KEYS.SKINCARE, [])
   const [done, setDone] = useLocalStorage<Record<string, boolean>>(KEYS.skinDay(date), {})
   const [editing, setEditing] = useState<SkinStep | null>(null)

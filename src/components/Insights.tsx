@@ -398,12 +398,12 @@ function CalorieChart({ days, kcal, partial, target, weights }: {
   days: string[]
   kcal: number[]
   partial: boolean[]
-  target: number
+  target: number | null
   weights: (number | null)[]
 }) {
   const W = 320, H = 96, PAD_X = 4, PAD_TOP = 8, PAD_BOT = 14
   const plotH = H - PAD_TOP - PAD_BOT
-  const top = Math.max(target * 1.25, ...kcal, 1)
+  const top = Math.max((target ?? 0) * 1.25, ...kcal, 1)
   const barW = (W - PAD_X * 2) / days.length
 
   const known = weights.filter((w): w is number => w != null)
@@ -424,7 +424,7 @@ function CalorieChart({ days, kcal, partial, target, weights }: {
     ])
   })
   const wLine = wPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
-  const targetY = PAD_TOP + (1 - target / top) * plotH
+  const targetY = target === null ? null : PAD_TOP + (1 - target / top) * plotH
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 96, display: 'block' }}>
@@ -438,15 +438,17 @@ function CalorieChart({ days, kcal, partial, target, weights }: {
             width={barW * 0.7}
             height={Math.max(v > 0 ? 1 : 0, h)}
             rx={1}
-            className={v >= target ? 'fill-success' : 'fill-accent'}
+            className={target !== null && v >= target ? 'fill-success' : 'fill-accent'}
             opacity={v === 0 ? 0 : partial[i] ? 0.28 : 0.75}
           />
         )
       })}
-      <line
-        x1={PAD_X} x2={W - PAD_X} y1={targetY} y2={targetY}
-        strokeWidth="1" strokeDasharray="3 3" className="stroke-text-faint"
-      />
+      {targetY !== null && (
+        <line
+          x1={PAD_X} x2={W - PAD_X} y1={targetY} y2={targetY}
+          strokeWidth="1" strokeDasharray="3 3" className="stroke-text-faint"
+        />
+      )}
       {wPts.length > 1 && (
         <path d={wLine} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="stroke-text-dim" />
       )}
@@ -483,10 +485,10 @@ export function NutritionSection() {
   const avg = (pick: (m: Macros) => number) =>
     logged.length === 0 ? 0 : Math.round(logged.reduce((a, m) => a + pick(m), 0) / logged.length)
 
-  const bars: { label: string; value: number; target: number }[] = [
-    { label: 'Protein', value: avg(m => m.protein), target: t.protein },
-    { label: 'Carbs',   value: avg(m => m.carbs),   target: t.carbs },
-    { label: 'Fat',     value: avg(m => m.fat),     target: t.fat },
+  const bars: { label: string; value: number; target: number | null }[] = [
+    { label: 'Protein', value: avg(m => m.protein), target: t?.protein ?? null },
+    { label: 'Carbs',   value: avg(m => m.carbs),   target: t?.carbs ?? null },
+    { label: 'Fat',     value: avg(m => m.fat),     target: t?.fat ?? null },
   ]
 
   return (
@@ -501,7 +503,7 @@ export function NutritionSection() {
             </p>
           </div>
           <p className="font-mono text-[11px] text-text-dim text-right leading-[16px]">
-            target {t.kcal}
+            {t ? `target ${t.kcal}` : 'no target'}
             <span className="block text-text-faint">weight ——</span>
           </p>
         </div>
@@ -510,7 +512,7 @@ export function NutritionSection() {
           days={days}
           kcal={series.map(m => m.kcal)}
           partial={series.map(m => m.partial)}
-          target={t.kcal}
+          target={t?.kcal ?? null}
           weights={weights}
         />
 
@@ -533,12 +535,12 @@ export function NutritionSection() {
             <div key={b.label}>
               <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">{b.label}</p>
               <p className="font-mono text-[17px] text-text font-medium tracking-[-0.02em] mt-0.5">
-                {b.value}<span className="text-[11px] text-text-dim"> / {b.target} g</span>
+                {b.value}{b.target !== null && <span className="text-[11px] text-text-dim"> / {b.target} g</span>}
               </p>
               <div className="h-[3px] rounded-pill bg-panel-inset overflow-hidden mt-1.5">
                 <div
-                  className={`h-full ${b.value >= b.target ? 'bg-success' : 'bg-accent'}`}
-                  style={{ width: `${Math.min(100, b.target > 0 ? (b.value / b.target) * 100 : 0)}%` }}
+                  className={`h-full ${b.target !== null && b.value >= b.target ? 'bg-success' : 'bg-accent'}`}
+                  style={{ width: `${b.target !== null && b.target > 0 ? Math.min(100, (b.value / b.target) * 100) : 0}%` }}
                 />
               </div>
             </div>

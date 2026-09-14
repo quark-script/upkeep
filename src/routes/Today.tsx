@@ -247,14 +247,14 @@ export default function Today() {
             <Stat
               label="Calories"
               value={eatenToday.kcal}
-              unit={`/ ${macroTargets.kcal}`}
-              accent={eatenToday.kcal >= macroTargets.kcal}
+              unit={macroTargets ? `/ ${macroTargets.kcal}` : 'KCAL'}
+              accent={!!macroTargets && eatenToday.kcal >= macroTargets.kcal}
             />
             <Stat
               label="Protein"
               value={Math.round(eatenToday.protein)}
-              unit={`/ ${macroTargets.protein} G`}
-              accent={eatenToday.protein >= macroTargets.protein}
+              unit={macroTargets ? `/ ${macroTargets.protein} G` : 'G'}
+              accent={!!macroTargets && eatenToday.protein >= macroTargets.protein}
             />
           </div>
           {/* week dots */}

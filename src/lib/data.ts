@@ -97,10 +97,6 @@ export const MUSCLE_LABELS: Record<MuscleGroup, string> = {
   arms: 'Arms', legs: 'Legs', core: 'Core',
 }
 
-// Grams of protein per kg of body weight to aim for while building muscle.
-export const PROTEIN_G_PER_KG = 1.6
-export const PROTEIN_TARGET_FALLBACK = 110
-
 // Mon=Push, Tue=Pull, Wed=Legs, Thu=Push, Fri=Pull, Sat=Legs, Sun=Rest
 export const SPLIT: Record<number, DayType> = {
   0: 'REST',
@@ -128,18 +124,3 @@ export const DAY_LABELS = Object.fromEntries(
 
 // Compounds tracked for stall detection
 export const COMPOUND_IDS = new Set(['bench-press', 'ohp', 'deadlift', 'squat'])
-
-// Seed measurement from brief
-export const BASELINE_MEASUREMENT = {
-  date: '2026-03-01',
-  weight: 70,
-  bodyFat: 18,
-  muscleMass: 33,
-  bmi: 22.9,
-  bmr: 1650,
-  measurements: {
-    neck: 15, shoulder: 18, chest: 38, biceps: 13, forearm: 11,
-    upperAbdomen: 33, lowerAbdomen: 33, waist: 33, hips: 38,
-    thigh: 22, calf: 14,
-  },
-}

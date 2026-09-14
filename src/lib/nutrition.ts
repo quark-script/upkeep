@@ -1,10 +1,9 @@
 import { SEED_FOODS } from './foods'
-import { PROTEIN_G_PER_KG, PROTEIN_TARGET_FALLBACK } from './data'
 import { KEYS } from './storage'
 import { normaliseName as norm, sameName } from './text'
 import { latestBodyWeightKg, latestBmr } from './stats'
 import type {
-  Food, FoodEntry, Macros, MacroTargets, TargetOverrides, Settings, MealSlot,
+  Food, FoodEntry, Macros, MacroTargets, LegacyTargetOverrides, Settings, MealSlot,
 } from './types'
 
 function read<T>(key: string, fallback: T): T {
@@ -238,62 +237,72 @@ export function entriesBySlot(date: string): Record<MealSlot, FoodEntry[]> {
 
 // ─── Targets ─────────────────────────────────────────────────────────────────
 
-// Daily protein goal: an explicit setting if one exists, otherwise scaled off
-// the latest body weight (1.6 g/kg is the usual muscle-building floor).
-export function proteinTargetG(): number {
+// These values reproduce the pre-migration calculator for existing users only.
+const LEGACY_PROTEIN_G_PER_KG = 1.6
+const LEGACY_PROTEIN_TARGET_FALLBACK = 110
+const LEGACY_DEFAULT_ACTIVITY = 1.5
+const LEGACY_DEFAULT_GOAL_DELTA = 200
+const LEGACY_FAT_FRACTION = 0.25
+const LEGACY_BMR_FALLBACK = 1500
+
+function legacyProteinTargetG(): number {
   const explicit = read<Settings | null>(KEYS.SETTINGS, null)?.proteinTargetG
   if (typeof explicit === 'number' && explicit > 0) return Math.round(explicit)
   const bw = latestBodyWeightKg()
-  return bw > 0 ? Math.round(bw * PROTEIN_G_PER_KG) : PROTEIN_TARGET_FALLBACK
-}
-
-export const DEFAULT_ACTIVITY = 1.5
-export const DEFAULT_GOAL_DELTA = 200
-const FAT_FRACTION = 0.25
-const BMR_FALLBACK = 1500
-
-export interface ResolvedTargets extends MacroTargets {
-  derived: Record<keyof MacroTargets, boolean>
-  /** The inputs behind the calorie figure, so the UI can show its working. */
-  basis: { bmr: number; activityFactor: number; goalDelta: number }
+  return bw > 0 ? Math.round(bw * LEGACY_PROTEIN_G_PER_KG) : LEGACY_PROTEIN_TARGET_FALLBACK
 }
 
 /**
- * All four targets, each either pinned by the user or derived.
- *
- * Carbs are derived LAST, from whatever calories protein and fat leave behind,
- * so the three macro targets always reconcile to the calorie target instead of
- * drifting apart as body weight changes.
+ * The four targets explicitly saved by the user. An incomplete legacy override
+ * is not a usable target set; the startup migration materialises those first.
  */
-export function targets(): ResolvedTargets {
-  const o = read<TargetOverrides>(KEYS.TARGETS, {})
-  const bmr = latestBmr()
-  const activityFactor = o.activityFactor ?? DEFAULT_ACTIVITY
-  const goalDelta = o.goalDelta ?? DEFAULT_GOAL_DELTA
+export function targets(): MacroTargets | null {
+  const o = read<LegacyTargetOverrides | null>(KEYS.TARGETS, null)
+  if (
+    o === null ||
+    !Number.isFinite(o.kcal) || o.kcal! <= 0 ||
+    !Number.isFinite(o.protein) || o.protein! < 0 ||
+    !Number.isFinite(o.carbs) || o.carbs! < 0 ||
+    !Number.isFinite(o.fat) || o.fat! < 0
+  ) return null
 
-  const protein = o.protein ?? proteinTargetG()
-  const kcal = o.kcal ?? Math.round((bmr > 0 ? bmr : BMR_FALLBACK) * activityFactor + goalDelta)
-  const fat = o.fat ?? Math.round((kcal * FAT_FRACTION) / 9)
+  return { kcal: o.kcal!, protein: o.protein!, carbs: o.carbs!, fat: o.fat! }
+}
+
+/** Resolve targets exactly as releases before manual target setup did. */
+export function legacyTargets(o = read<LegacyTargetOverrides>(KEYS.TARGETS, {})): MacroTargets {
+  const bmr = latestBmr()
+  const activityFactor = o.activityFactor ?? LEGACY_DEFAULT_ACTIVITY
+  const goalDelta = o.goalDelta ?? LEGACY_DEFAULT_GOAL_DELTA
+
+  const protein = o.protein ?? legacyProteinTargetG()
+  const kcal = o.kcal ?? Math.round((bmr > 0 ? bmr : LEGACY_BMR_FALLBACK) * activityFactor + goalDelta)
+  const fat = o.fat ?? Math.round((kcal * LEGACY_FAT_FRACTION) / 9)
   const carbs = o.carbs ?? Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4))
 
-  return {
-    kcal, protein, carbs, fat,
-    derived: {
-      kcal: o.kcal === undefined,
-      protein: o.protein === undefined,
-      carbs: o.carbs === undefined,
-      fat: o.fat === undefined,
-    },
-    basis: { bmr, activityFactor, goalDelta },
+  return { kcal, protein, carbs, fat }
+}
+
+export const TARGET_SETUP_VERSION = 1
+
+export function hasCurrentTargetSetup(): boolean {
+  return read<number | null>(KEYS.TARGET_SETUP, null) === TARGET_SETUP_VERSION
+}
+
+export function markTargetSetupComplete(): void {
+  write(KEYS.TARGET_SETUP, TARGET_SETUP_VERSION)
+}
+
+export function setTargets(value: MacroTargets): void {
+  write(KEYS.TARGETS, value)
+  markTargetSetupComplete()
+}
+
+export function clearTargets(): void {
+  try {
+    localStorage.removeItem(KEYS.TARGETS)
+  } catch (err) {
+    console.warn('failed to clear nutrition targets', err)
   }
-}
-
-export function setTargets(patch: TargetOverrides): void {
-  write(KEYS.TARGETS, { ...read<TargetOverrides>(KEYS.TARGETS, {}), ...patch })
-}
-
-/** Drop one pinned target so it goes back to being derived. */
-export function clearTarget(field: keyof TargetOverrides): void {
-  const { [field]: _drop, ...rest } = read<TargetOverrides>(KEYS.TARGETS, {})
-  write(KEYS.TARGETS, rest)
+  markTargetSetupComplete()
 }

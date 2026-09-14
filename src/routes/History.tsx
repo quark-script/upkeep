@@ -66,7 +66,7 @@ export default function History() {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [windowDays, setWindowDays] = useState(WINDOW_STEP)
 
-  const proteinTarget = targets().protein
+  const proteinTarget = targets()?.protein ?? 0
   const today = new Date()
 
   // Is there anything older than the current window still worth loading?

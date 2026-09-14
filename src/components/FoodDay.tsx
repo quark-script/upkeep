@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, X, Pencil } from 'lucide-react'
 import { useToast } from '../lib/toast'
 import { useLocalStorage } from '../hooks/useLocalStorage'
@@ -78,6 +79,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
   const [sheetFor, setSheetFor] = useState<MealSlot | null>(null)
   const [editing, setEditing] = useState<FoodEntry | null>(null)
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
   const toast = useToast()
 
   const t = useMemo(() => targets(), [])
@@ -95,8 +97,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
   )
 
   const bySlot = useMemo(() => groupBySlot(entries), [entries])
-
-  const remaining = Math.max(0, t.kcal - total.kcal)
+  const remaining = t ? Math.max(0, t.kcal - total.kcal) : null
 
   const upsert = (entry: FoodEntry) => {
     setEntries(prev => prev.some(e => e.id === entry.id)
@@ -137,21 +138,45 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
   return (
     <Card noPad>
       {/* Header */}
-      <div className="px-[18px] pt-[18px] pb-4 flex items-center gap-4 border-b border-[var(--color-divider)]">
-        <CalorieRing value={total.kcal} total={t.kcal} />
-        <div className="flex-1 min-w-0">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
-            {isToday ? 'Food today' : `Food · ${label}`}
-          </p>
-          <p className="font-serif text-[24px] text-text font-medium tracking-[-0.03em] mt-1">
-            {remaining === 0 ? 'Target hit.' : `${remaining} kcal to go.`}
-          </p>
-          <div className="flex flex-col gap-2 mt-2.5">
-            <MacroBar label="Protein" value={total.protein} target={t.protein} />
-            <MacroBar label="Carbs"   value={total.carbs}   target={t.carbs} />
-            <MacroBar label="Fat"     value={total.fat}     target={t.fat} />
+      <div className="px-[18px] pt-[18px] pb-4 border-b border-[var(--color-divider)]">
+        {t ? (
+          <div className="flex items-center gap-4">
+            <CalorieRing value={total.kcal} total={t.kcal} />
+            <div className="flex-1 min-w-0">
+              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+                {isToday ? 'Food today' : `Food · ${label}`}
+              </p>
+              <p className="font-serif text-[24px] text-text font-medium tracking-[-0.03em] mt-1">
+                {remaining === 0 ? 'Target hit.' : `${remaining} kcal to go.`}
+              </p>
+              <div className="flex flex-col gap-2 mt-2.5">
+                <MacroBar label="Protein" value={total.protein} target={t.protein} />
+                <MacroBar label="Carbs" value={total.carbs} target={t.carbs} />
+                <MacroBar label="Fat" value={total.fat} target={t.fat} />
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+                {isToday ? 'Food today' : `Food · ${label}`}
+              </p>
+              <p className="font-serif text-[22px] text-text font-medium tracking-[-0.03em] mt-1">
+                Set your targets.
+              </p>
+              <p className="font-sans text-[12px] text-text-dim mt-1">
+                Food logging still works without them.
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('/settings/nutrition')}
+              className="shrink-0 bg-accent text-accent-text rounded-pill px-3.5 py-2 font-sans text-[11px] uppercase tracking-[0.06em] font-medium cursor-pointer"
+            >
+              Set targets
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Meals. An empty slot renders nothing at all — a quiet day should look

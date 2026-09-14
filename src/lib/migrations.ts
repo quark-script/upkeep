@@ -1,7 +1,10 @@
 import { EXERCISES } from './data'
 import { normaliseName, upsertCustom } from './library'
 import { sameName } from './text'
-import { norm, resolveFoods, foodById, saveFood, setFoodPrefs, macrosFor } from './nutrition'
+import {
+  norm, resolveFoods, foodById, saveFood, setFoodPrefs, macrosFor,
+  hasCurrentTargetSetup, legacyTargets, TARGET_SETUP_VERSION,
+} from './nutrition'
 import { KEYS, PREFIX, DAY_PREFIXES } from './storage'
 import type {
   Session, Exercise, WorkoutType, WorkoutDraft,
@@ -455,8 +458,25 @@ export function migrateProteinDays(): void {
   console.info(`migration: converted ${entries} checkbox ticks across ${days} days`)
 }
 
+export function needsLegacyTargetMigration(): boolean {
+  if (hasCurrentTargetSetup()) return false
+  try {
+    return localStorage.getItem(KEYS.PROFILE) != null ||
+      localStorage.getItem(KEYS.TARGETS) != null
+  } catch {
+    return false
+  }
+}
+
+export function migrateLegacyTargets(): void {
+  if (!needsLegacyTargetMigration()) return
+  localStorage.setItem(KEYS.TARGETS, JSON.stringify(legacyTargets()))
+  localStorage.setItem(KEYS.TARGET_SETUP, JSON.stringify(TARGET_SETUP_VERSION))
+}
+
 /** Every migration this build knows about, in order. Called once from main.tsx. */
 export function runMigrations(): void {
   runOnce('orphan-exercises-v1', migrateOrphanExercises)
   runOnce('protein-days-v1', migrateProteinDays)
+  if (needsLegacyTargetMigration()) runOnce('manual-targets-v1', migrateLegacyTargets)
 }

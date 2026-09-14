@@ -16,6 +16,7 @@ export const KEYS = {
   FOODS: `${PREFIX}foods`,
   FOOD_PREFS: `${PREFIX}food-prefs`,
   TARGETS: `${PREFIX}macro-targets`,
+  TARGET_SETUP: `${PREFIX}target-setup-version`,
   SETTINGS: `${PREFIX}settings`,
   MEASUREMENTS: `${PREFIX}measurements`,
   PROTEIN_CUSTOM: `${PREFIX}protein:custom`,

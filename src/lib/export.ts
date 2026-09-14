@@ -84,7 +84,7 @@ export function buildReport() {
     .map(({ date }) => ({
       date,
       ...dayMacros(date),
-      targets: { kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat },
+      targets: t ? { kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat } : null,
       items: dayEntries(date).map(e => ({
         slot: e.slot,
         food: e.name,
@@ -328,10 +328,13 @@ export function buildWeeklyDigest(): string {
   if (foodDays.length > 0) {
     const avg = (pick: (m: typeof foodDays[number]) => number) =>
       Math.round(foodDays.reduce((a, m) => a + pick(m), 0) / foodDays.length)
-    const proteinHit = foodDays.filter(m => m.protein >= t.protein).length
-    L.push(`## Nutrition — ${avg(m => m.kcal)} kcal/day average (target ${t.kcal})`)
+    const targetSuffix = t ? ` (target ${t.kcal})` : ''
+    L.push(`## Nutrition — ${avg(m => m.kcal)} kcal/day average${targetSuffix}`)
     L.push(`- Protein ${avg(m => m.protein)} g · carbs ${avg(m => m.carbs)} g · fat ${avg(m => m.fat)} g per day`)
-    L.push(`- Protein target (${t.protein} g) hit on ${proteinHit} of ${foodDays.length} logged day${foodDays.length === 1 ? '' : 's'}`)
+    if (t) {
+      const proteinHit = foodDays.filter(m => m.protein >= t.protein).length
+      L.push(`- Protein target (${t.protein} g) hit on ${proteinHit} of ${foodDays.length} logged day${foodDays.length === 1 ? '' : 's'}`)
+    }
     if (partial > 0) {
       L.push(`- ${partial} earlier day${partial === 1 ? '' : 's'} carried over from protein-only logging, excluded from these averages`)
     }
@@ -446,7 +449,7 @@ export function foodToCSV(): string {
         date, e.slot, e.name, e.qty, servingLabel(e.foodId, e.servingId), e.grams,
         e.macros.kcal, e.macros.protein, e.macros.carbs, e.macros.fat,
         day.kcal, day.protein, day.carbs, day.fat,
-        t.kcal, t.protein, t.carbs, t.fat,
+        t?.kcal ?? '', t?.protein ?? '', t?.carbs ?? '', t?.fat ?? '',
       ]))
     })
   })
