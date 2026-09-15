@@ -25,6 +25,17 @@ describe('nutrition targets', () => {
     expect(targets()).toBeNull()
   })
 
+  it('keeps legacy targets visible when migration storage is unavailable', () => {
+    localStorage.setItem(KEYS.PROFILE, JSON.stringify({ name: 'Existing user' }))
+    localStorage.setItem(KEYS.MEASUREMENTS, JSON.stringify([
+      { date: '2026-09-01', weight: 70, bmr: 1_600 },
+    ]))
+
+    expect(targets()).toEqual({
+      kcal: 2_600, protein: 112, carbs: 376, fat: 72,
+    })
+  })
+
   it('returns only targets the user explicitly saved', () => {
     setTargets({
       kcal: 2_100,

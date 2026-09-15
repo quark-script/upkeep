@@ -30,13 +30,14 @@ function TargetEditor({ initial, onSaved }: {
     carbs: initial ? String(initial.carbs) : '',
     fat: initial ? String(initial.fat) : '',
   })
+  const integer = (raw: string) => raw.trim() === '' ? Number.NaN : Number(raw)
   const values: MacroTargets = {
-    kcal: parseInt(form.kcal, 10),
-    protein: parseInt(form.protein, 10),
-    carbs: parseInt(form.carbs, 10),
-    fat: parseInt(form.fat, 10),
+    kcal: integer(form.kcal),
+    protein: integer(form.protein),
+    carbs: integer(form.carbs),
+    fat: integer(form.fat),
   }
-  const valid = Object.values(values).every(Number.isFinite) &&
+  const valid = Object.values(values).every(Number.isInteger) &&
     values.kcal > 0 && values.protein >= 0 && values.carbs >= 0 && values.fat >= 0
 
   const save = () => {
@@ -65,7 +66,10 @@ function TargetEditor({ initial, onSaved }: {
             <label key={key} className="flex items-center gap-3">
               <span className="flex-1 font-sans text-[13.5px] text-text font-medium">{label}</span>
               <input
+                type="number"
                 inputMode="numeric"
+                min={key === 'kcal' ? 1 : 0}
+                step="1"
                 value={form[key]}
                 onChange={e => setForm(current => ({ ...current, [key]: e.target.value }))}
                 placeholder="—"

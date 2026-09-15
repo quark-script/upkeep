@@ -76,7 +76,7 @@ function MedEditor({
               <input
                 value={draft.dose ?? ''}
                 onChange={e => set('dose', e.target.value)}
-                placeholder="250 mg"
+                placeholder="Dose or strength"
                 className={field}
               />
             </div>

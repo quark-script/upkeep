@@ -253,20 +253,34 @@ function legacyProteinTargetG(): number {
 }
 
 /**
- * The four targets explicitly saved by the user. An incomplete legacy override
- * is not a usable target set; the startup migration materialises those first.
+ * True for installs that existed before target setup became explicit. The
+ * startup migration normally materialises their calculated values, but this
+ * fallback also preserves them if localStorage is too full to snapshot/write.
  */
+function isLegacyTargetInstall(): boolean {
+  if (hasCurrentTargetSetup()) return false
+  try {
+    return localStorage.getItem(KEYS.PROFILE) != null ||
+      localStorage.getItem(KEYS.TARGETS) != null
+  } catch {
+    return false
+  }
+}
+
+/** The four targets explicitly saved by the user. */
 export function targets(): MacroTargets | null {
   const o = read<LegacyTargetOverrides | null>(KEYS.TARGETS, null)
-  if (
-    o === null ||
-    !Number.isFinite(o.kcal) || o.kcal! <= 0 ||
-    !Number.isFinite(o.protein) || o.protein! < 0 ||
-    !Number.isFinite(o.carbs) || o.carbs! < 0 ||
-    !Number.isFinite(o.fat) || o.fat! < 0
-  ) return null
+  const complete = o !== null &&
+    Number.isFinite(o.kcal) && o.kcal! > 0 &&
+    Number.isFinite(o.protein) && o.protein! >= 0 &&
+    Number.isFinite(o.carbs) && o.carbs! >= 0 &&
+    Number.isFinite(o.fat) && o.fat! >= 0
 
-  return { kcal: o.kcal!, protein: o.protein!, carbs: o.carbs!, fat: o.fat! }
+  if (complete) {
+    return { kcal: o.kcal!, protein: o.protein!, carbs: o.carbs!, fat: o.fat! }
+  }
+
+  return isLegacyTargetInstall() ? legacyTargets(o ?? {}) : null
 }
 
 /** Resolve targets exactly as releases before manual target setup did. */
