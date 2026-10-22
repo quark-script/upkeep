@@ -49,6 +49,8 @@ const MAX_CHUNK_BYTES = 512 * 1024
 const PAGE = 1000
 /** Pull-merge-push rounds before giving up on a key that keeps conflicting. */
 const MAX_ROUNDS = 3
+/** Stop a push after this many chunks fail in a row (offline, auth). */
+const MAX_CONSECUTIVE_FAILURES = 3
 
 export interface SyncStatus {
   configured: boolean
@@ -494,6 +496,7 @@ async function runCycle(reason: Reason): Promise<void> {
     if (!persistProgress(state, store)) throw new Abandoned()
   }
   let changed = false
+  let sendError: string | null = null
 
   try {
     // Nothing to send and nothing asked for: skip the network entirely.
@@ -535,18 +538,29 @@ async function runCycle(reason: Reason): Promise<void> {
       if (puts.length === 0) break
 
       const conflicts: string[] = []
+      let failuresInARow = 0
       for (const slice of chunk(puts)) {
-        const results = await sendPuts(slice)
+        let results: PutResult[]
+        try {
+          results = await sendPuts(slice)
+        } catch (err) {
+          // One permanently-rejected chunk must not strand every later one, and
+          // chunks go out in the same order every cycle. Keep going; this
+          // chunk's keys stay unsynced and are offered again next cycle.
+          check()
+          sendError ??= `${err instanceof Error ? err.message : String(err)} (first stuck key: ${slice[0].key})`
+          if (++failuresInARow >= MAX_CONSECUTIVE_FAILURES) break
+          continue
+        }
+        failuresInARow = 0
         check()
         conflicts.push(...recordPuts(state, slice, results))
         state.lastPushAt = Date.now()
         save()
         lastPushAt = state.lastPushAt
       }
-      if (conflicts.length === 0) {
-        pending = 0
-        break
-      }
+      if (sendError) break
+      if (conflicts.length === 0) break
 
       // Another device wrote these first: take its value, merge, go again.
       const rows = await fetchKeys(userId, conflicts)
@@ -556,7 +570,8 @@ async function runCycle(reason: Reason): Promise<void> {
     }
 
     pending = buildPuts(state, collectLocal(store)).length
-    lastError = pending > 0 ? 'Some changes keep conflicting with another device; will retry.' : null
+    lastError = sendError ??
+      (pending > 0 ? 'Some changes keep conflicting with another device; will retry.' : null)
   } catch (err) {
     if (!(err instanceof Abandoned)) {
       lastError = err instanceof Error ? err.message : String(err)

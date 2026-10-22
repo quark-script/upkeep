@@ -19,12 +19,19 @@ import type {
  * Kept deliberately: it costs a few hundred KB and it is the only way to check
  * a migration after the fact. Removable from Settings once the user is happy.
  */
+/**
+ * Sync bookkeeping describes this device's relationship with the cloud right
+ * now. Rolling it back with the data would make sync think the cloud is newer
+ * than the restored values and quietly pull the rollback away again.
+ */
+const DEVICE_KEYS = new Set<string>([KEYS.SYNC_STATE, KEYS.SYNC_OVERWRITE])
+
 export function snapshot(id: string): void {
   const key = `${PREFIX}snapshot:${id}`
   if (localStorage.getItem(key) != null) return   // never overwrite an earlier one
   const data: Record<string, string> = {}
   for (const k of Object.keys(localStorage)) {
-    if (!k.startsWith(PREFIX) || k.startsWith(`${PREFIX}snapshot:`)) continue
+    if (!k.startsWith(PREFIX) || k.startsWith(`${PREFIX}snapshot:`) || DEVICE_KEYS.has(k)) continue
     const v = localStorage.getItem(k)
     if (v != null) data[k] = v
   }
@@ -117,7 +124,8 @@ export function restoreSnapshot(id: string): boolean {
   for (const k of Object.keys(localStorage)) {
     if (k.startsWith(PREFIX) && !k.startsWith(`${PREFIX}snapshot:`)) localStorage.removeItem(k)
   }
-  for (const [k, v] of Object.entries(parsed.data)) localStorage.setItem(k, v)
+  // Older snapshots still carry sync state; it must not come back.
+  for (const [k, v] of Object.entries(parsed.data)) if (!DEVICE_KEYS.has(k)) localStorage.setItem(k, v)
   const done = ran()
   delete done[id]
   localStorage.setItem(KEYS.MIGRATIONS, JSON.stringify(done))

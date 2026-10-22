@@ -484,6 +484,9 @@ export default function Settings() {
                   const ok = restoreSnapshot(confirmRestore.id)
                   setConfirmRestore(null)
                   if (!ok) { toast({ message: "That restore point couldn't be read." }); return }
+                  // A rollback is "this is the truth now"; without this, sync
+                  // would merge the newer cloud copy straight back in.
+                  markThisDeviceAuthoritative()
                   // Migrations run at startup, so the app has to come back up to
                   // re-apply them against the restored data.
                   sessionStorage.setItem('upkeep:restore-note', 'Rolled back to the earlier version.')
