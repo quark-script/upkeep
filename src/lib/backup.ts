@@ -1,5 +1,6 @@
 import { KEYS, PREFIX } from './storage'
 import type { Session, MeasurementEntry } from './types'
+import { merge3 } from './merge'
 
 const LEGACY_PREFIX = 'gainz:'
 
@@ -9,7 +10,7 @@ const LEGACY_PREFIX = 'gainz:'
 // already pushed to the cloud. Carrying it onto another device — or restoring
 // it onto a fresh install — would convince that device everything was already
 // uploaded, and it would never seed.
-const SKIP_KEYS = new Set<string>([KEYS.REST_END, KEYS.LAST_BACKUP, KEYS.SYNC_STATE])
+const SKIP_KEYS = new Set<string>([KEYS.REST_END, KEYS.LAST_BACKUP, KEYS.SYNC_STATE, KEYS.SYNC_OVERWRITE])
 
 // Pre-migration snapshots are a local undo buffer, not portable data: they hold
 // a full copy of everything else in this file, so carrying them would roughly
@@ -155,9 +156,17 @@ export function restoreBackup(text: string, mode: RestoreMode): RestoreResult {
         localStorage.setItem(KEYS.MEASUREMENTS, JSON.stringify(merged))
         result.measurements = added.length
       }
-    } else if (localStorage.getItem(key) == null) {
-      localStorage.setItem(key, value)
-      result.otherKeys++
+    } else {
+      const mine = localStorage.getItem(key)
+      // An existing key used to be skipped outright, so a device holding only
+      // the empty starter medicines list never received the backup's real one.
+      // Merge instead: lists by item id, objects by field, and this device wins
+      // only where both hold a different value for the same item.
+      const merged = mine == null ? value : merge3(null, mine, value, 'local')
+      if (merged !== mine) {
+        localStorage.setItem(key, merged)
+        result.otherKeys++
+      }
     }
   }
 

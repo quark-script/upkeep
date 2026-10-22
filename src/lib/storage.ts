@@ -23,6 +23,7 @@ export const KEYS = {
   REST_END: `${PREFIX}rest-end`,
   LAST_BACKUP: `${PREFIX}last-backup`,
   SYNC_STATE: `${PREFIX}sync-state`,
+  SYNC_OVERWRITE: `${PREFIX}sync-overwrite`,
   MEDICINES: `${PREFIX}medicines`,
   SKINCARE: `${PREFIX}skincare`,
   DAILY_SECTION: `${PREFIX}daily-section`,

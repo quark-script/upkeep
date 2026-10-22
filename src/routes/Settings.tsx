@@ -13,6 +13,7 @@ import { backupToJSON, markBackedUp, lastBackupAt, restoreBackup, type RestoreMo
 import { snapshots, restoreSnapshot, discardSnapshot, migrationFailures, type SnapshotInfo } from '../lib/migrations'
 import { useToast } from '../lib/toast'
 import CloudSync from '../components/CloudSync'
+import { markThisDeviceAuthoritative, signOutCloud } from '../lib/sync'
 import type { Session, MeasurementEntry } from '../lib/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ function ResetModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: 
       <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
         <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Reset all data?</p>
         <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-4">
-          This permanently deletes every session, measurement, sleep log, and food entry on this device. Cannot be undone. Your cloud backup is not affected.
+          This permanently deletes every session, measurement, sleep log, and food entry on this device. Cannot be undone. This device is signed out of cloud backup; the cloud copy is not affected.
         </p>
         <p className="font-sans text-[12px] text-warn leading-[18px] mb-6">
           Download a backup first if there's any chance you'll want this data back.
@@ -121,7 +122,7 @@ function RestoreModal({
         >
           <p className="font-sans text-[14px] text-danger font-medium">Replace everything</p>
           <p className="font-sans text-[12px] text-text-dim leading-[17px] mt-0.5">
-            Wipes current data first, then restores the backup exactly as saved.
+            Wipes current data first, then restores the backup exactly as saved. If you're signed in, the cloud copy is replaced too.
           </p>
         </button>
 
@@ -168,6 +169,9 @@ export default function Settings() {
     if (!pending) return
     try {
       const r = restoreBackup(pending.text, mode)
+      // Replace means "this is the truth now": without this, sync would merge
+      // the cloud's copy straight back in on the next load.
+      if (mode === 'replace') markThisDeviceAuthoritative()
       setPending(null)
       const parts = [
         `${r.sessions} session${r.sessions === 1 ? '' : 's'}`,
@@ -218,7 +222,11 @@ export default function Settings() {
     setTimeout(() => setExported(null), 2500)
   }
 
-  function handleReset() {
+  async function handleReset() {
+    // Sign this device out first. Sync is two-way, so a device still signed in
+    // would pull the cloud copy straight back after the wipe. Signing out
+    // leaves the cloud backup untouched, as the dialog promises.
+    try { await signOutCloud() } catch (err) { console.warn('[reset] sign-out failed', err) }
     // Wipe every key this app owns, including any left under the old name
     const toDelete = Object.keys(localStorage).filter(k => k.startsWith(PREFIX) || k.startsWith('gainz:'))
     toDelete.forEach(k => localStorage.removeItem(k))
@@ -492,7 +500,7 @@ export default function Settings() {
 
       {showReset && (
         <ResetModal
-          onConfirm={handleReset}
+          onConfirm={() => void handleReset()}
           onCancel={() => setShowReset(false)}
         />
       )}

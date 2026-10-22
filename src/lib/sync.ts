@@ -2,38 +2,53 @@ import { useSyncExternalStore } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { PREFIX, KEYS } from './storage'
 import { skipped, type BackupFile } from './backup'
+import { fingerprint, hashValue, merge3, type Base } from './merge'
 import { supabase } from './supabase'
 
+export { hashValue }
+
 /**
- * Mirrors this device's localStorage to Supabase so the data survives the
- * device. localStorage stays authoritative: nothing here ever writes to local
- * storage except an explicit restore the user asks for.
+ * Two-way sync of this device's localStorage with Supabase.
  *
- * Change detection is a dirty-scan rather than instrumented writes. The app has
- * ~76 localStorage call sites and many bypass the useLocalStorage hook, so
- * hashing every app-owned key and diffing against what was last pushed catches
- * every write path — including ones added later that forget to notify anything.
+ * Every cycle is pull → merge → push:
  *
- * Measured cost of one scan on a desktop core, over the real shape of this data
- * (one growing `sessions` blob plus ~400 day keys): 1.1 ms at 0.27 MB, 2.9 ms at
- * 0.67 MB. A phone several times slower still lands in the low tens of
- * milliseconds every 3 s, which is why the interval stays short — a longer one
- * would only widen the window in which a write is not yet backed up.
+ *   - Pull fetches cloud rows this device has not seen (by per-row version) and
+ *     merges each into the local value with `merge3`, using the last-synced cloud
+ *     value as the base. Lists merge item by item, so a medicine added on one
+ *     device and a session logged on another both survive.
+ *   - Push writes local values that differ from the last-synced cloud value, but
+ *     only against the version this device last saw (`upkeep_kv_put`). If another
+ *     device got there first the write is refused, the newer row is pulled and
+ *     merged, and the merged value is pushed instead.
+ *
+ * A device never pushes before its first full pull. That is the bug this design
+ * replaces: a freshly signed-in device used to upload its empty starter lists
+ * over the real data in the cloud before ever reading it.
+ *
+ * Screens read localStorage once at mount, so a pull that changes local values
+ * after the app has mounted reloads the page (immediately if visible, otherwise
+ * on return). Pulls happen at startup, on sign-in and on returning to the app —
+ * never on the 3-second timer — so a reload is never sprung on someone mid-tap
+ * unless two devices edited the same thing at the same moment.
  */
 
 const TABLE = 'upkeep_kv'
 const SCAN_INTERVAL_MS = 3000
-/** Rows per upsert, as a secondary bound behind the byte budget below. */
+/** How long startup waits for the first pull before showing the app anyway. */
+const STARTUP_WAIT_MS = 2500
+/** Re-read rows this far behind the cursor, in case of clock or commit skew. */
+const CURSOR_OVERLAP_MS = 60_000
+/** Rows per write, as a secondary bound behind the byte budget below. */
 const MAX_CHUNK_ROWS = 200
 /**
- * Byte budget per upsert. Row count alone does not bound a request: a single
+ * Byte budget per write. Row count alone does not bound a request: a single
  * year-long `sessions` value dwarfs hundreds of day keys put together.
  */
 const MAX_CHUNK_BYTES = 512 * 1024
-/** Rows per select page when pulling a restore. */
+/** Rows per select page when pulling. */
 const PAGE = 1000
-/** Give up on a scan after this many chunks fail in a row (offline, auth). */
-const MAX_CONSECUTIVE_FAILURES = 3
+/** Pull-merge-push rounds before giving up on a key that keeps conflicting. */
+const MAX_ROUNDS = 3
 
 export interface SyncStatus {
   configured: boolean
@@ -46,53 +61,59 @@ export interface SyncStatus {
   error: string | null
 }
 
-export interface Entry {
-  hash: string
-  updatedAt: string
+/** The cloud value this device last synced with, for one key. */
+export interface Entry extends Base {
+  version: number
+  deleted?: boolean
 }
 
 export interface State {
   userId: string
   lastPushAt: number | null
+  /** True once this device has pulled and merged the whole cloud copy. */
+  reconciled: boolean
+  /** Latest `updated_at` seen from the cloud; pulls ask for rows after it. */
+  cursor: string | null
   keys: Record<string, Entry>
 }
 
-interface Row {
-  user_id: string
+/** A row as read from the cloud. */
+export interface CloudRow {
   key: string
-  raw: string
+  raw: string | null
   deleted: boolean
+  version: number
+  updated_at: string
 }
 
-/** A row to push, plus what to record locally once the push succeeds. */
-interface Item {
-  row: Row
-  entry: Entry
+/** A conditional write, as sent to `upkeep_kv_put`. */
+export interface Put {
+  key: string
+  raw: string | null
+  deleted: boolean
+  /** Version this write is based on; null = only create if absent. */
+  base: number | null
 }
 
-export interface Diff {
-  /** Values that changed locally and must be written. */
-  upserts: Item[]
-  /** Keys deleted locally, flagged rather than overwritten. */
-  tombstones: string[]
+export interface PutResult {
+  k: string
+  v: number | null
+  ok: boolean
 }
 
-// ─── Hashing ─────────────────────────────────────────────────────────────────
+/** The slice of localStorage the sync logic needs, so tests can supply a fake. */
+export interface Store {
+  get(key: string): string | null
+  set(key: string, value: string): void
+  remove(key: string): void
+  keys(): string[]
+}
 
-/**
- * djb2, with the value's length appended.
- *
- * A 32-bit hash alone would collide often enough to matter across a few hundred
- * keys edited daily for years, and a collision here means a silently unsynced
- * change. Pairing it with the length makes an undetected edit need both the same
- * hash and the same length.
- */
-export function hashValue(value: string): string {
-  let h = 5381
-  for (let i = 0; i < value.length; i++) {
-    h = (((h << 5) + h) ^ value.charCodeAt(i)) >>> 0
-  }
-  return `${h.toString(36)}:${value.length.toString(36)}`
+export const browserStore: Store = {
+  get: key => localStorage.getItem(key),
+  set: (key, value) => localStorage.setItem(key, value),
+  remove: key => localStorage.removeItem(key),
+  keys: () => Object.keys(localStorage),
 }
 
 // ─── Local state ─────────────────────────────────────────────────────────────
@@ -100,53 +121,55 @@ export function hashValue(value: string): string {
 function isEntry(value: unknown): value is Entry {
   return (
     typeof value === 'object' && value !== null &&
-    typeof (value as Entry).hash === 'string'
+    typeof (value as Entry).hash === 'string' &&
+    typeof (value as Entry).version === 'number'
   )
 }
 
-export function readState(userId: string): State {
+export function readState(userId: string, store: Store = browserStore): State {
   try {
-    const stored = localStorage.getItem(KEYS.SYNC_STATE)
+    const stored = store.get(KEYS.SYNC_STATE)
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<State> | null
-      // State written for another account says nothing about this one; starting
-      // fresh just re-pushes everything, which is safe.
+      // State written for another account says nothing about this one. State
+      // from the old push-only sync has no versions; both start over with a
+      // full pull, which merges rather than overwrites, so that is safe.
       if (parsed && parsed.userId === userId && parsed.keys && !Array.isArray(parsed.keys)) {
         const keys: Record<string, Entry> = {}
-        // Drop anything malformed rather than trusting it: a bad entry either
-        // suppresses a push or invents a tombstone, and both are worse than a
-        // redundant upload.
         for (const [key, entry] of Object.entries(parsed.keys)) {
           if (key.startsWith(PREFIX) && isEntry(entry)) keys[key] = entry
         }
+        const reconciled = parsed.reconciled === true && Object.keys(keys).length === Object.keys(parsed.keys).length
         return {
           userId,
           lastPushAt: typeof parsed.lastPushAt === 'number' ? parsed.lastPushAt : null,
-          keys,
+          reconciled,
+          cursor: reconciled && typeof parsed.cursor === 'string' ? parsed.cursor : null,
+          keys: reconciled ? keys : {},
         }
       }
     }
   } catch {
-    // Unreadable state is not worth failing over — re-seed instead.
+    // Unreadable state is not worth failing over — start over with a full pull.
   }
-  return { userId, lastPushAt: null, keys: {} }
+  return { userId, lastPushAt: null, reconciled: false, cursor: null, keys: {} }
 }
 
-function statePresent(): boolean {
+function statePresent(store: Store): boolean {
   try {
-    return localStorage.getItem(KEYS.SYNC_STATE) != null
+    return store.get(KEYS.SYNC_STATE) != null
   } catch {
     return false
   }
 }
 
-function persist(state: State): boolean {
+function persist(state: State, store: Store): boolean {
   try {
-    localStorage.setItem(KEYS.SYNC_STATE, JSON.stringify(state))
+    store.set(KEYS.SYNC_STATE, JSON.stringify(state))
     return true
   } catch (err) {
-    // A persistent failure here means the same rows are re-uploaded on every
-    // scan forever, so it belongs in front of the user, not only the console.
+    // A persistent failure here means the same rows are re-sent on every
+    // cycle forever, so it belongs in front of the user, not only the console.
     lastError = 'Could not save sync state on this device.'
     console.warn('[sync] could not persist sync state', err)
     return false
@@ -154,94 +177,175 @@ function persist(state: State): boolean {
 }
 
 /**
- * Persist progress, unless this device was wiped while the push was in flight.
+ * Persist progress, unless this device was wiped while a request was in flight.
  *
  * "Reset all data" and a `replace` restore delete every `upkeep:` key, this one
- * included, and that deletion is what protects the cloud copy: with no state,
- * the next scan sees no known keys and emits no tombstones. Re-creating the
- * state after such a wipe would describe keys that no longer exist locally, and
- * the very next scan would tombstone the entire replica. So a vanished state key
- * means the write is abandoned, not repeated.
+ * included. Re-creating the state after such a wipe would describe keys that no
+ * longer exist locally, and the next push would tombstone the entire replica. So
+ * a vanished state key means the cycle is abandoned, not completed.
  */
-function persistProgress(state: State): boolean {
-  if (!statePresent()) return false
-  return persist(state)
+function persistProgress(state: State, store: Store): boolean {
+  if (!statePresent(store)) return false
+  return persist(state, store)
 }
 
 export function clearSyncState(): void {
   try {
     localStorage.removeItem(KEYS.SYNC_STATE)
+    localStorage.removeItem(KEYS.SYNC_OVERWRITE)
   } catch {
-    // Nothing useful to do; the next push simply re-uploads.
+    // Nothing useful to do; the next sign-in starts with a full pull.
   }
 }
 
-// ─── Diffing ─────────────────────────────────────────────────────────────────
+/**
+ * Make this device's data the cloud copy on the next sync: local values win
+ * every key, and keys this device does not have are deleted from the cloud
+ * (recoverably — tombstones keep the old value). Used after a `replace` restore,
+ * whose whole point is that the restored data is the truth.
+ */
+export function markThisDeviceAuthoritative(): void {
+  if (!currentUser) return
+  try {
+    localStorage.removeItem(KEYS.SYNC_STATE)
+    localStorage.setItem(KEYS.SYNC_OVERWRITE, JSON.stringify(currentUser.id))
+  } catch {
+    // Without the marker the next sync merges instead, which loses nothing.
+  }
+}
+
+// ─── Pure sync logic ─────────────────────────────────────────────────────────
 
 /** Every app-owned key that belongs in the cloud, by key. */
-export function collectLocal(): Map<string, string> {
+export function collectLocal(store: Store = browserStore): Map<string, string> {
   const out = new Map<string, string>()
   let keys: string[]
   try {
-    keys = Object.keys(localStorage)
+    keys = store.keys()
   } catch {
     return out
   }
   for (const key of keys) {
     if (!key.startsWith(PREFIX) || skipped(key)) continue
-    const value = localStorage.getItem(key)
+    const value = store.get(key)
     if (value != null) out.set(key, value)
   }
   return out
 }
 
-export function buildDiff(state: State, local: Map<string, string>, userId: string): Diff {
-  const now = new Date().toISOString()
-  const upserts: Item[] = []
+function entryFor(raw: string | null, version: number): Entry {
+  return raw == null ? { hash: '', version, deleted: true } : { ...fingerprint(raw), version }
+}
 
+/**
+ * Decide this device's value for one key, given the cloud's.
+ * `null` means the key should not exist locally.
+ */
+export function resolve(entry: Entry | undefined, local: string | null, remote: string | null): string | null {
+  const base = entry && !entry.deleted ? entry : null
+  if (remote == null) {
+    if (local == null) return null
+    // Deleted on another device and untouched here: delete here too.
+    if (base && hashValue(local) === base.hash) return null
+    return local
+  }
+  if (local == null) {
+    // Deleted here and unchanged in the cloud: stays deleted (push tombstones it).
+    if (base && hashValue(remote) === base.hash) return null
+    return remote
+  }
+  return merge3(base, local, remote)
+}
+
+/**
+ * Merge pulled rows into local storage and record them as the new base.
+ *
+ * In `overwrite` mode local values are left exactly as they are — only the
+ * versions are learned, so the next push replaces the cloud copy.
+ *
+ * Returns the keys whose local value changed.
+ */
+export function applyRows(
+  state: State,
+  rows: CloudRow[],
+  store: Store,
+  mode: 'merge' | 'overwrite' = 'merge',
+): string[] {
+  const changed: string[] = []
+  for (const row of rows) {
+    if (!row.key.startsWith(PREFIX) || skipped(row.key)) continue
+    if (state.cursor == null || row.updated_at > state.cursor) state.cursor = row.updated_at
+
+    const entry = state.keys[row.key]
+    if (entry && entry.version >= row.version) continue
+
+    const remote = row.deleted || typeof row.raw !== 'string' ? null : row.raw
+    if (mode === 'merge') {
+      const local = store.get(row.key)
+      const next = resolve(entry, local, remote)
+      if (next !== local) {
+        if (next == null) store.remove(row.key)
+        else store.set(row.key, next)
+        changed.push(row.key)
+      }
+    }
+    state.keys[row.key] = entryFor(remote, row.version)
+  }
+  return changed
+}
+
+/** Local values that differ from what this device last synced. */
+export function buildPuts(state: State, local: Map<string, string>): Put[] {
+  const puts: Put[] = []
   for (const [key, value] of local) {
-    const hash = hashValue(value)
-    if (state.keys[key]?.hash === hash) continue
-    upserts.push({
-      row: { user_id: userId, key, raw: value, deleted: false },
-      entry: { hash, updatedAt: now },
-    })
+    const entry = state.keys[key]
+    if (entry && !entry.deleted && entry.hash === hashValue(value)) continue
+    puts.push({ key, raw: value, deleted: false, base: entry ? entry.version : null })
   }
 
-  // Not one app key left while the cloud knows of several: that is a wipe or a
+  // Not one app key left while the cloud holds several: that is a wipe or a
   // storage read that failed, never a user deleting their whole log key by key
-  // inside one 3-second tick. Tombstoning here would destroy the backup at the
-  // exact moment it is the only copy, so leave the replica alone.
-  if (local.size === 0 && Object.keys(state.keys).length > 0) return { upserts, tombstones: [] }
+  // inside one tick. Tombstoning here would destroy the backup at the exact
+  // moment it is the only copy, so leave the replica alone.
+  const live = Object.entries(state.keys).filter(([, e]) => !e.deleted)
+  if (local.size === 0 && live.length > 0) return puts
 
-  // Known to the cloud but gone from this device, so a restore should not
-  // resurrect it.
-  const tombstones = Object.keys(state.keys).filter(key => !local.has(key))
-  return { upserts, tombstones }
+  for (const [key, entry] of live) {
+    if (!local.has(key)) puts.push({ key, raw: null, deleted: true, base: entry.version })
+  }
+  return puts
 }
 
-/** Split a list into batches of at most `MAX_CHUNK_ROWS`. */
-function batchKeys(keys: string[]): string[][] {
-  const out: string[][] = []
-  for (let i = 0; i < keys.length; i += MAX_CHUNK_ROWS) out.push(keys.slice(i, i + MAX_CHUNK_ROWS))
-  return out
+/** Record accepted writes; returns the keys the cloud refused (stale base). */
+export function recordPuts(state: State, sent: Put[], results: PutResult[]): string[] {
+  const conflicts: string[] = []
+  const byKey = new Map(results.map(r => [r.k, r]))
+  for (const put of sent) {
+    const result = byKey.get(put.key)
+    if (result?.ok && typeof result.v === 'number') {
+      state.keys[put.key] = entryFor(put.deleted ? null : put.raw, result.v)
+    } else {
+      conflicts.push(put.key)
+    }
+  }
+  return conflicts
 }
 
-/** Group items into requests bounded by both byte size and row count. */
-function chunk(items: Item[]): Item[][] {
-  const chunks: Item[][] = []
-  let current: Item[] = []
+/** Group writes into requests bounded by both byte size and row count. */
+function chunk(puts: Put[]): Put[][] {
+  const chunks: Put[][] = []
+  let current: Put[] = []
   let bytes = 0
-  for (const item of items) {
+  for (const put of puts) {
     // Rough upper bound: JSON escaping and UTF-8 can inflate a string, and the
     // row's own fields add a little. Being wrong high only sends smaller requests.
-    const size = item.row.raw.length * 2 + item.row.key.length + 128
+    const size = (put.raw?.length ?? 0) * 2 + put.key.length + 128
     if (current.length > 0 && (current.length >= MAX_CHUNK_ROWS || bytes + size > MAX_CHUNK_BYTES)) {
       chunks.push(current)
       current = []
       bytes = 0
     }
-    current.push(item)
+    current.push(put)
     bytes += size
   }
   if (current.length > 0) chunks.push(current)
@@ -307,119 +411,189 @@ export function useSyncStatus(): SyncStatus {
   return useSyncExternalStore(subscribe, getSyncStatus, getSyncStatus)
 }
 
-// ─── Push ────────────────────────────────────────────────────────────────────
+// ─── Network ─────────────────────────────────────────────────────────────────
 
-let pushing = false
+const COLUMNS = 'key, raw, deleted, version, updated_at'
 
-/**
- * Scan, diff, and push what changed.
- *
- * The state map advances only after a chunk lands, which makes the diff itself
- * the outbox: a failed request, a crash mid-flight, or a week offline all leave
- * the hashes stale and the next scan simply offers the same rows again. There is
- * no separate queue that can drift from reality.
- */
-export async function flush(): Promise<void> {
-  if (!supabase || !currentUser || pushing) return
+/** Every row (cursor null), or rows changed since the cursor. */
+async function fetchRows(userId: string, cursor: string | null): Promise<CloudRow[]> {
+  if (!supabase) return []
+  const out: CloudRow[] = []
+  const since = cursor ? new Date(new Date(cursor).getTime() - CURSOR_OVERLAP_MS).toISOString() : null
+  let from = 0
+  for (;;) {
+    let query = supabase.from(TABLE).select(COLUMNS).eq('user_id', userId)
+    if (since) query = query.gt('updated_at', since)
+    const { data, error } = await query
+      .order('updated_at')
+      .order('key')
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) break
+    out.push(...(data as CloudRow[]))
+    // Advance by what actually came back, never by the page size: PostgREST
+    // caps responses at the project's `max_rows`.
+    from += data.length
+  }
+  return out
+}
 
-  pushing = true
+async function fetchKeys(userId: string, keys: string[]): Promise<CloudRow[]> {
+  if (!supabase) return []
+  const out: CloudRow[] = []
+  for (let i = 0; i < keys.length; i += MAX_CHUNK_ROWS) {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select(COLUMNS)
+      .eq('user_id', userId)
+      .in('key', keys.slice(i, i + MAX_CHUNK_ROWS))
+    if (error) throw new Error(error.message)
+    out.push(...((data ?? []) as CloudRow[]))
+  }
+  return out
+}
+
+async function sendPuts(puts: Put[]): Promise<PutResult[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('upkeep_kv_put', { p_rows: puts })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as PutResult[]
+}
+
+// ─── Cycle ───────────────────────────────────────────────────────────────────
+
+type Reason = 'pull' | 'push'
+
+let mounted = false
+let reloadOnVisible = false
+
+/** Local values changed under mounted screens: they must re-read storage. */
+function localChanged(): void {
+  if (!mounted) return
+  if (document.visibilityState === 'visible') window.location.reload()
+  else reloadOnVisible = true
+}
+
+/** Abandon a cycle whose session ended or whose device was wiped mid-flight. */
+class Abandoned extends Error {}
+
+async function runCycle(reason: Reason): Promise<void> {
+  if (!supabase || !currentUser) return
+  // Offline is the normal case at a gym, not an error worth showing.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+
+  const store = browserStore
   const userId = currentUser.id
+  const state = readState(userId, store)
+  lastPushAt = state.lastPushAt
+
+  const check = () => {
+    if (!currentUser || currentUser.id !== userId) throw new Abandoned()
+  }
+  const save = () => {
+    if (!persistProgress(state, store)) throw new Abandoned()
+  }
+  let changed = false
+
   try {
-    const state = readState(userId)
-    lastPushAt = state.lastPushAt
-    const { upserts, tombstones } = buildDiff(state, collectLocal(), userId)
-    pending = upserts.length + tombstones.length
-    if (pending === 0) {
-      lastError = null
-      notify()
-      return
-    }
-
-    // Offline is the normal case at a gym, not an error worth showing.
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      lastError = null
-      notify()
-      return
-    }
-
-    // Claim the state key before the first request. From here on its absence
-    // means a wipe happened mid-push, which persistProgress refuses to undo.
-    if (!statePresent() && !persist(state)) {
-      notify()
-      return
+    // Nothing to send and nothing asked for: skip the network entirely.
+    if (state.reconciled && reason === 'push') {
+      const count = buildPuts(state, collectLocal(store)).length
+      pending = count
+      if (count === 0) {
+        lastError = null
+        return
+      }
     }
 
     busy = true
     notify()
 
-    let firstError: string | null = null
-    let consecutiveFailures = 0
+    // Claim the state key before the first request. From here on its absence
+    // means a wipe happened mid-cycle, which `save` refuses to undo.
+    if (!statePresent(store) && !persist(state, store)) return
 
-    /** Record progress; false means stop (wiped, or signed out). */
-    const commit = (keys: string[], entries: Item[] | null): boolean => {
-      if (entries) for (const item of entries) state.keys[item.row.key] = item.entry
-      else for (const key of keys) delete state.keys[key]
-      state.lastPushAt = Date.now()
-      if (!persistProgress(state)) return false
-      lastPushAt = state.lastPushAt
-      pending -= keys.length
+    if (!state.reconciled) {
+      const overwrite = store.get(KEYS.SYNC_OVERWRITE) === JSON.stringify(userId)
+      const rows = await fetchRows(userId, null)
+      check()
+      if (applyRows(state, rows, store, overwrite ? 'overwrite' : 'merge').length) changed = true
+      state.reconciled = true
+      save()
+      store.remove(KEYS.SYNC_OVERWRITE)
+    } else if (reason === 'pull') {
+      const rows = await fetchRows(userId, state.cursor)
+      check()
+      if (applyRows(state, rows, store).length) changed = true
+      save()
+    }
+
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      const puts = buildPuts(state, collectLocal(store))
+      pending = puts.length
       notify()
-      return true
-    }
+      if (puts.length === 0) break
 
-    for (const slice of chunk(upserts)) {
-      const { error } = await supabase
-        .from(TABLE)
-        .upsert(slice.map(item => item.row), { onConflict: 'user_id,key' })
-
-      // Sign-out or an account switch during the request: this session's rows
-      // are no longer ours to record, and the state it would write has just
-      // been cleared on purpose.
-      if (!currentUser || currentUser.id !== userId) return
-
-      if (error) {
-        // One permanently-rejected row must not strand every later chunk. Keep
-        // going, leaving this chunk's hashes stale so it is retried next scan.
-        firstError ??= `${error.message} (first stuck key: ${slice[0].row.key})`
-        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) break
-        continue
+      const conflicts: string[] = []
+      for (const slice of chunk(puts)) {
+        const results = await sendPuts(slice)
+        check()
+        conflicts.push(...recordPuts(state, slice, results))
+        state.lastPushAt = Date.now()
+        save()
+        lastPushAt = state.lastPushAt
       }
-      consecutiveFailures = 0
-      if (!commit(slice.map(item => item.row.key), slice)) return
-    }
-
-    // Deletions flip the flag and nothing else. Overwriting `raw` with null
-    // would make a mistaken tombstone unrecoverable, and this is the only path
-    // in the whole module that can destroy data rather than merely fail to
-    // save it — `fetchCloudBackup` filters on `deleted`, so the bytes it leaves
-    // behind cost nothing and buy a one-line recovery.
-    for (const batch of batchKeys(tombstones)) {
-      const { error } = await supabase
-        .from(TABLE)
-        .update({ deleted: true })
-        .eq('user_id', userId)
-        .in('key', batch)
-
-      if (!currentUser || currentUser.id !== userId) return
-
-      if (error) {
-        firstError ??= `${error.message} (first stuck key: ${batch[0]})`
-        if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) break
-        continue
+      if (conflicts.length === 0) {
+        pending = 0
+        break
       }
-      consecutiveFailures = 0
-      if (!commit(batch, null)) return
+
+      // Another device wrote these first: take its value, merge, go again.
+      const rows = await fetchKeys(userId, conflicts)
+      check()
+      if (applyRows(state, rows, store).length) changed = true
+      save()
     }
 
-    lastError = firstError
+    pending = buildPuts(state, collectLocal(store)).length
+    lastError = pending > 0 ? 'Some changes keep conflicting with another device; will retry.' : null
   } catch (err) {
-    lastError = err instanceof Error ? err.message : String(err)
-    console.warn('[sync] push failed', err)
+    if (!(err instanceof Abandoned)) {
+      lastError = err instanceof Error ? err.message : String(err)
+      console.warn('[sync] cycle failed', err)
+    }
   } finally {
-    pushing = false
     busy = false
     notify()
+    if (changed) localChanged()
   }
+}
+
+let running: Promise<void> | null = null
+let queued: Reason | null = null
+
+/** Run a sync cycle, or queue one behind the cycle already running. */
+export function sync(reason: Reason = 'push'): Promise<void> {
+  if (running) {
+    if (queued !== 'pull') queued = reason
+    return running
+  }
+  running = (async () => {
+    let next: Reason | null = reason
+    while (next) {
+      queued = null
+      await runCycle(next)
+      next = queued
+    }
+  })().finally(() => {
+    running = null
+  })
+  return running
+}
+
+/** Push anything that changed locally. Kept for callers of the old API. */
+export function flush(): Promise<void> {
+  return sync('push')
 }
 
 // ─── Restore ─────────────────────────────────────────────────────────────────
@@ -428,33 +602,15 @@ export async function flush(): Promise<void> {
  * Pull the cloud copy as a backup file.
  *
  * Deliberately returns the same JSON shape the Download-backup button produces,
- * so restoring from the cloud goes through the existing, already-tested
- * `restoreBackup()` rather than a second restore implementation.
+ * so restoring from the cloud goes through the existing `restoreBackup()`.
  */
 export async function fetchCloudBackup(): Promise<string> {
   if (!supabase || !currentUser) throw new Error('Not signed in.')
 
   const data: Record<string, string> = {}
-  let from = 0
-  for (;;) {
-    const { data: rows, error } = await supabase
-      .from(TABLE)
-      .select('key, raw')
-      .eq('user_id', currentUser.id)
-      .eq('deleted', false)
-      .order('key')
-      .range(from, from + PAGE - 1)
-    if (error) throw new Error(error.message)
-    if (!rows || rows.length === 0) break
-    for (const row of rows as { key: string; raw: string | null }[]) {
-      if (typeof row.raw === 'string') data[row.key] = row.raw
-    }
-    // Advance by what actually came back, never by the page size: PostgREST
-    // caps responses at the project's `max_rows`, and assuming a full page
-    // would silently truncate the restore the moment that cap is lower.
-    from += rows.length
+  for (const row of await fetchRows(currentUser.id, null)) {
+    if (!row.deleted && typeof row.raw === 'string') data[row.key] = row.raw
   }
-
   if (Object.keys(data).length === 0) throw new Error('Nothing backed up to this account yet.')
 
   const file: BackupFile = {
@@ -472,17 +628,16 @@ export async function fetchCloudBackup(): Promise<string> {
 export async function signOutCloud(): Promise<void> {
   if (!supabase) return
   try {
-    // Local scope so signing out works with no network. The session is this
-    // device's to drop; there is nothing to revoke elsewhere on a single device.
+    // Local scope so signing out works with no network.
     await supabase.auth.signOut({ scope: 'local' })
   } finally {
-    // The next sign-in re-seeds from scratch rather than trusting a map that
-    // describes what some other session uploaded.
+    // The next sign-in starts with a full pull rather than trusting a map that
+    // describes what some other session synced.
     clearSyncState()
   }
 }
 
-function setUser(user: User | null): void {
+function setUser(user: User | null): Promise<void> {
   const changed = user?.id !== currentUser?.id
   currentUser = user
   if (changed) {
@@ -490,35 +645,67 @@ function setUser(user: User | null): void {
     lastError = null
     pending = 0
   }
+  notify()
   if (!user) {
     lastPushAt = null
-  } else if (changed) {
-    lastPushAt = readState(user.id).lastPushAt
-    void flush()
+    notify()
+    return Promise.resolve()
   }
-  notify()
+  if (!changed) return Promise.resolve()
+  lastPushAt = readState(user.id).lastPushAt
+  return sync('pull')
+}
+
+/** Call once the app has rendered: from then on, pulled changes need a reload. */
+export function markMounted(): void {
+  mounted = true
 }
 
 let started = false
 
-/** Start background sync. Safe to call when cloud backup is not configured. */
-export function startSync(): void {
-  if (!supabase || started) return
+/**
+ * Start background sync. Safe to call when cloud backup is not configured.
+ *
+ * Resolves once the first pull has landed (or after a short wait), so the app
+ * can render with this device already up to date instead of reloading moments
+ * after it appears.
+ */
+export function startSync(): Promise<void> {
+  if (!supabase || started) return Promise.resolve()
   started = true
 
-  void supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null))
-  supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null))
+  const first = supabase.auth.getSession()
+    .then(({ data }) => setUser(data.session?.user ?? null))
+    // The auth listener below may have started the first cycle already, in
+    // which case setUser above saw no change; wait for that cycle either way.
+    .then(() => running ?? undefined)
+    .catch(err => console.warn('[sync] could not read session', err))
+
+  supabase.auth.onAuthStateChange((_event, session) => {
+    void setUser(session?.user ?? null)
+  })
 
   window.setInterval(() => {
-    if (document.visibilityState === 'visible') void flush()
+    if (document.visibilityState === 'visible') void sync('push')
   }, SCAN_INTERVAL_MS)
 
-  // Leaving the app is the moment most likely to be followed by the tab being
-  // discarded, so push immediately rather than waiting for the next tick.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') void flush()
+    if (document.visibilityState === 'hidden') {
+      // Leaving the app is the moment most likely to be followed by the tab
+      // being discarded, so push immediately rather than waiting for the timer.
+      void sync('push')
+    } else if (reloadOnVisible) {
+      window.location.reload()
+    } else {
+      // Back in the app: pick up whatever other devices did meanwhile.
+      void sync('pull')
+    }
   })
-  window.addEventListener('online', () => void flush())
+  window.addEventListener('online', () => void sync('pull'))
 
   notify()
+  return Promise.race([
+    first,
+    new Promise<void>(resolve => window.setTimeout(resolve, STARTUP_WAIT_MS)),
+  ])
 }

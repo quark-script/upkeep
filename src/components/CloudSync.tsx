@@ -96,7 +96,7 @@ export default function CloudSync({ onRestore }: { onRestore: (name: string, tex
       await verifySignInCode(email, code)
       setCode('')
       setCodeSent(false)
-      toast({ message: 'Signed in. Backing up in the background.' })
+      toast({ message: 'Signed in. Syncing this device with your cloud copy…' })
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : 'That code did not work.' })
     } finally {
