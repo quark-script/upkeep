@@ -395,7 +395,7 @@ export default function ExerciseSettings() {
                     <div className="flex-1 min-w-0">
                       <p className="font-sans text-[14px] text-text font-medium truncate">{ex.name}</p>
                       <p className="font-sans text-[11.5px] text-text-dim mt-0.5 leading-[15px]">
-                        Trained well past {ex.defaultReps} for three sessions — the range never fires.
+                        Trained well past {ex.defaultReps} for three sessions, so the range never fires.
                       </p>
                     </div>
                     <Btn

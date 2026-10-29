@@ -110,7 +110,7 @@ export type FoodSource = 'seed' | 'custom' | 'off'
 
 export type MealSlot = 'breakfast' | 'lunch' | 'snack' | 'dinner'
 
-/** Macros per 100 g (or per 100 ml for liquids). The single source of truth —
+/** Macros per 100 g (or per 100 ml for liquids). The single source of truth:
  *  every serving is a gram weight that scales these. */
 export interface Macros {
   kcal: number
@@ -120,7 +120,7 @@ export interface Macros {
 }
 
 /** A named household portion. `grams` is what it actually weighs, which is how
- *  it converts to macros — so "1 bowl" can be corrected once and every entry
+ *  it converts to macros, so "1 bowl" can be corrected once and every entry
  *  logged from then on stays consistent. */
 export interface Serving {
   id: string
@@ -158,7 +158,7 @@ export interface FoodEntry {
   slot: MealSlot
   /** Reconstructed by the protein-checkbox migration rather than logged. Such a
    *  day recorded only which supplements were ticked, so its totals are a floor,
-   *  not a measurement — averages and charts exclude them. */
+   *  not a measurement: averages and charts exclude them. */
   migrated?: boolean
   at: number
 }
@@ -176,7 +176,7 @@ export interface LegacyTargetOverrides extends Partial<MacroTargets> {
   goalDelta?: number         // historical kcal adjustment
 }
 
-// One night's sleep, keyed by the date you went to bed — so `awake` is the
+// One night's sleep, keyed by the date you went to bed, so `awake` is the
 // following morning. Times are 24h floats (0–25); values >24 crossed midnight.
 export interface SleepEntry {
   phone?: number

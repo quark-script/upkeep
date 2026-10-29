@@ -33,7 +33,7 @@ function buildHeatmap(sessions: Session[]): HeatmapCell[] {
     const isRest   = dayTypeFor(dateStr) === 'REST'
     const isFuture = d > today
 
-    // A logged session outranks the schedule — training on a day you'd marked
+    // A logged session outranks the schedule: training on a day you'd marked
     // as rest must still show up, not vanish into a grey cell.
     let state: CellState
     if (isToday)                           state = 'today'
@@ -169,7 +169,7 @@ function numField(label: string, unit: string, value: string, onChange: (v: stri
           value={value}
           onChange={e => onChange(e.target.value)}
           className="flex-1 bg-transparent border-none outline-none font-mono text-[15px] text-text min-w-0"
-          placeholder="—"
+          placeholder="-"
           inputMode="decimal"
         />
         <span className="font-mono text-[11px] text-text-faint uppercase shrink-0">{unit}</span>
@@ -303,7 +303,7 @@ export default function Progress() {
   const missed  = cells.filter(c => c.state === 'missed').length
 
   const today   = new Date()
-  // startOfWeek handles Sunday correctly — the hand-rolled version resolved to
+  // startOfWeek handles Sunday correctly; the hand-rolled version resolved to
   // *next* Monday on Sundays and reported zero sessions for the week.
   const weekStart = startOfWeek(today, { weekStartsOn: 1 })
   const weekSessions = sessions.filter(s => s.finishedAt && parseKey(s.date) >= weekStart).length
@@ -479,7 +479,7 @@ export default function Progress() {
                       </span>
                     ))}
                     {tape3.length < 3 && Array.from({ length: 3 - tape3.length }).map((_, j) => (
-                      <span key={j} className="text-text-faint font-mono text-[13px]">—</span>
+                      <span key={j} className="text-text-faint font-mono text-[13px]">-</span>
                     ))}
                   </div>
                 )

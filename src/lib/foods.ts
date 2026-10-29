@@ -1,7 +1,7 @@
 import type { Food, Macros } from './types'
 
 /**
- * Per-100 g macros for the foods this app is actually used to log — an Indian
+ * Per-100 g macros for the foods this app is actually used to log: an Indian
  * home diet plus the usual gym staples.
  *
  * Values are per 100 g **as eaten** (cooked where the serving implies it),
@@ -20,7 +20,7 @@ import type { Food, Macros } from './types'
  * qualifier: "Egg (whole, boiled)" -> "egg", "Toor Dal (cooked)" -> "toor dal".
  * Derived rather than hand-listed on 39 rows, so it cannot drift from the name.
  *
- * A few of these collide by design — three milks all reduce to "milk". Both the
+ * A few of these collide by design: three milks all reduce to "milk". Both the
  * migration (array order) and search (which breaks ties on catalog position)
  * take the first, which is the plain cow's milk listed first; the others surface
  * directly below it.
@@ -29,7 +29,7 @@ function plainAlias(name: string): string {
   return name.split(/[(/]/)[0].trim()
 }
 
-/** Compact constructor — the table below is the point, not the boilerplate. */
+/** Compact constructor: the table below is the point, not the boilerplate. */
 function f(
   id: string,
   name: string,

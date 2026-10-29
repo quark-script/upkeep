@@ -63,7 +63,7 @@ export function resolveLibrary(): Exercise[] {
 }
 
 /**
- * Resolve one id, including hidden lifts — history must still render the name
+ * Resolve one id, including hidden lifts: history must still render the name
  * of a lift the user has since hidden. Returns undefined for ids that predate
  * name capture, so callers can show "Unknown lift" instead of crashing.
  */
@@ -80,7 +80,7 @@ export function exerciseById(id: string): Exercise | undefined {
 export function planFor(type: WorkoutType): Exercise[] {
   const p = prefs()
   const ids = read<DayPlan>(KEYS.DAY_PLAN, {})[type]
-  // An empty saved plan is a real choice, not an absent one — dropping the last
+  // An empty saved plan is a real choice, not an absent one: dropping the last
   // lift from a day must leave it empty, never resurrect the seed defaults.
   if (Array.isArray(ids)) {
     return ids
@@ -103,7 +103,7 @@ export function hasCustomPlan(type: WorkoutType): boolean {
  * Plan edits must go through this, NOT through `planFor`: that filters hidden
  * lifts out, so rebuilding the stored array from it would quietly delete a
  * hidden lift from the plan the next time anything else on that day was
- * reordered or dropped — an irreversible config edit from an unrelated action.
+ * reordered or dropped, an irreversible config edit from an unrelated action.
  */
 function planIds(type: WorkoutType): string[] {
   const saved = read<DayPlan>(KEYS.DAY_PLAN, {})[type]
@@ -135,7 +135,7 @@ export function clearPref(id: string, field: keyof ExercisePrefs): void {
 
 /**
  * Lifts the user has hidden. They are absent from `resolveLibrary` by design,
- * so without this there would be no way back — the Exercises screen lists them
+ * so without this there would be no way back: the Exercises screen lists them
  * separately and offers an unhide.
  */
 export function hiddenExercises(): Exercise[] {
@@ -158,7 +158,7 @@ function slugId(name: string): string {
 }
 
 /**
- * Look a typed name up in the whole library first — including seed aliases —
+ * Look a typed name up in the whole library first, including seed aliases,
  * and return the existing lift if there is one. Only a genuinely new name mints
  * an id. This is the fix for the same lift becoming a new random UUID on every
  * session; ids are stable and derived from the name.
@@ -203,10 +203,10 @@ export function renameCustom(id: string, name: string): void {
 
 /**
  * Picker search. Ranked rather than filtered, so a lift tagged to another day
- * is still reachable — it just sorts below the ones for today.
+ * is still reachable; it just sorts below the ones for today.
  *
  * Tiers: exact name > exact alias > name prefix > name substring > alias
- * substring. An exact alias ranks with an exact name — someone typing
+ * substring. An exact alias ranks with an exact name: someone typing
  * "deadlift" means the lift tagged with it, not whatever else starts the same
  * way. Within a tier, lifts for the current day come first, then shorter names,
  * so "row" surfaces "Barbell Row" above "Chest-Supported Row".
@@ -295,7 +295,7 @@ export function addToPlan(type: WorkoutType, id: string): void {
   setPlan(type, [...ids, id])
 }
 
-/** The day's plan including hidden lifts — for the editor, which must show
+/** The day's plan including hidden lifts, for the editor, which must show
  *  everything it is about to rewrite. */
 export function planIdsFor(type: WorkoutType): string[] {
   return planIds(type)

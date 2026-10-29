@@ -3,7 +3,7 @@ import type { Exercise, Session, ExerciseLog, LiveSet, LoadUnit } from './types'
 // ─── Units ───────────────────────────────────────────────────────────────────
 // `stepFor` and `unitLabels` live here rather than in stats.ts on purpose:
 // stats.ts needs `exerciseById` from library.ts, and library.ts needs the step
-// size. Keeping them here makes the dependency run one way only —
+// size. Keeping them here makes the dependency run one way only:
 // stats → library → progression → types.
 
 export function unitLabels(unit: LoadUnit): { load: string; count: string } {
@@ -25,7 +25,7 @@ const QUALIFY_STREAK = 2
 const OVERSHOOT_STREAK = 3
 
 // Every past appearance of a lift, newest first. Deliberately not filtered by
-// workout type — a lift you moved to another day still carries its history.
+// workout type: a lift you moved to another day still carries its history.
 export function pastLogs(sessions: Session[], exerciseId: string): { session: Session; log: ExerciseLog }[] {
   return sessions
     .filter(s => s.finishedAt !== null)
@@ -103,7 +103,7 @@ function topSet(log: ExerciseLog) {
 /**
  * Seed one exercise's rows for a new session.
  *
- * `sets` ALWAYS prefill at last session's actual numbers — never the bumped
+ * `sets` ALWAYS prefill at last session's actual numbers, never the bumped
  * value. The increase is offered separately via `bump`, so an unwanted
  * suggestion costs a glance instead of an edit. `expW`/`expR` keep pointing at
  * last session so `beatsExpected` in Workout.tsx keeps working unchanged.
@@ -133,7 +133,7 @@ export function prefillFor(ex: Exercise, sessions: Session[]): Prefill {
   let bump: Bump | null = null
   if (range) {
     // Count the whole run, not just up to the threshold. A long run is not
-    // noise to be suppressed — it is the strongest signal the app has that a
+    // noise to be suppressed: it is the strongest signal the app has that a
     // lift is being under-loaded, and the wording below escalates to say so.
     // Waving the chip away is per-session; that is the "not today" answer.
     let streak = 0
@@ -147,7 +147,7 @@ export function prefillFor(ex: Exercise, sessions: Session[]): Prefill {
       // The wording carries the actual run length, so a lift stuck for months
       // reads differently from one that just earned its first increase.
       const reason = streak > QUALIFY_STREAK
-        ? `${streak} sessions running at ${held} — this is overdue`
+        ? `${streak} sessions running at ${held}, this is overdue`
         : `${streak} sessions at ${held}`
       bump = unit === 'time'
         ? { from: last.reps, to: last.reps + stepFor(unit, ex.category).count, unit, reason }
@@ -167,7 +167,7 @@ export function prefillFor(ex: Exercise, sessions: Session[]): Prefill {
 }
 
 /**
- * Accept a bump. Load goes up and reps restart at the BOTTOM of the range —
+ * Accept a bump. Load goes up and reps restart at the BOTTOM of the range:
  * that is the point of double progression: you buy the heavier weight by giving
  * back the reps and climbing again.
  */
@@ -180,7 +180,7 @@ export function applyBump(sets: LiveSet[], bump: Bump, min: number): LiveSet[] {
 
 /**
  * True when the last few sessions all blew past the prescribed maximum without
- * the range ever being raised — a sign `defaultReps` no longer describes how
+ * the range ever being raised: a sign `defaultReps` no longer describes how
  * this lift is actually trained. Surfaced in the Exercises screen, never as an
  * interruption during a workout.
  */

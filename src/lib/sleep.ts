@@ -7,8 +7,8 @@ import type { SleepEntry } from './types'
  * midnight is stored as a small number (6.5 = 06:30) and has to be pushed into
  * the next day before subtracting.
  *
- * A non-positive result means the two times can't describe a single night —
- * e.g. a wake time logged in the afternoon against a 23:00 bedtime. Reporting
+ * A non-positive result means the two times can't describe a single night,
+ * for example a wake time logged in the afternoon against a 23:00 bedtime. Reporting
  * that as unknown keeps a nonsense negative out of the week chart, the CSV,
  * the JSON report and the digest average.
  */

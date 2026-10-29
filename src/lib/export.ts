@@ -12,8 +12,8 @@ import type {
 
 // ─── Name / label resolution ────────────────────────────────────────────────
 
-// Prefer the name captured at log time — that is what was true when it was
-// logged — then the resolved library, which now covers custom lifts too. The
+// Prefer the name captured at log time (that is what was true when it was
+// logged), then the resolved library, which now covers custom lifts too. The
 // raw id is a last resort for sessions logged before names were stored.
 export function exerciseName(log: ExerciseLog): string {
   return log.name ?? exerciseById(log.exerciseId)?.name ?? log.exerciseId
@@ -125,7 +125,7 @@ export function buildReport() {
     legend: {
       weight: 'kilograms (kg)',
       times: '24-hour local clock as decimal hours (22.5 = 22:30); sleep times past midnight may read >24',
-      sleep: 'each entry is keyed by nightOf, the date the lifter went to bed — `awake` is the following morning',
+      sleep: 'each entry is keyed by nightOf, the date the lifter went to bed; `awake` is the following morning',
       sleepQuality: 'self-rated 1 (wrecked) to 5 (fully rested); null when not rated',
       proteinG: 'estimated grams of protein from the items ticked that day, against the daily targetG',
       loadUnit:
@@ -247,7 +247,7 @@ export function sleepToCSV(): string {
 
 // ─── Weekly digest (plain markdown for a human or AI trainer) ────────────────
 
-// PRs set within [startKey, endKey] — a lift's est-1RM beating its own prior
+// PRs set within [startKey, endKey]: a lift's est-1RM beating its own prior
 // best. A lift's first-ever appearance is a baseline, not a PR.
 function weeklyPRs(all: Session[], startKey: string, endKey: string): { name: string; value: number; date: string }[] {
   const bw = latestBodyWeightKg()
@@ -284,24 +284,24 @@ export function buildWeeklyDigest(): string {
   const profile = JSON.parse(localStorage.getItem(KEYS.PROFILE) ?? 'null') as Profile | null
 
   const L: string[] = []
-  L.push('# Upkeep — Weekly Digest')
+  L.push('# Upkeep weekly digest')
   L.push(`**${format(parseKey(startKey), 'MMM d')} – ${format(parseKey(endKey), 'MMM d, yyyy')}**`)
   if (profile?.name) L.push(`Lifter: ${profile.name}`)
   L.push('')
 
   // Training
   const totalVol = sessions.reduce((a, s) => a + sessionVolume(s), 0)
-  L.push(`## Training — ${sessions.length} session${sessions.length === 1 ? '' : 's'} · ${Math.round(totalVol).toLocaleString()} kg total`)
+  L.push(`## Training: ${sessions.length} session${sessions.length === 1 ? '' : 's'} · ${Math.round(totalVol).toLocaleString()} kg total`)
   if (sessions.length === 0) L.push('_No workouts logged this week._')
   for (const s of sessions) {
     const dur = s.finishedAt ? Math.round((s.finishedAt - s.startedAt) / 60000) : null
-    L.push(`- **${format(parseKey(s.date), 'EEE MMM d')} · ${s.type}** — ${Math.round(sessionVolume(s)).toLocaleString()} kg${dur ? `, ${dur} min` : ''}`)
+    L.push(`- **${format(parseKey(s.date), 'EEE MMM d')} · ${s.type}**: ${Math.round(sessionVolume(s)).toLocaleString()} kg${dur ? `, ${dur} min` : ''}`)
     if (s.note) L.push(`  - note: ${s.note}`)
     for (const ex of s.exercises) {
       const done = ex.sets.filter(st => st.done)
       const top = topSet(ex)
       if (!top) continue
-      L.push(`  - ${exerciseName(ex)}: ${done.length} sets, top ${formatSet(top, logUnit(ex))}${ex.note ? ` — ${ex.note}` : ''}`)
+      L.push(`  - ${exerciseName(ex)}: ${done.length} sets, top ${formatSet(top, logUnit(ex))}${ex.note ? ` (${ex.note})` : ''}`)
     }
   }
   L.push('')
@@ -329,7 +329,7 @@ export function buildWeeklyDigest(): string {
     const avg = (pick: (m: typeof foodDays[number]) => number) =>
       Math.round(foodDays.reduce((a, m) => a + pick(m), 0) / foodDays.length)
     const targetSuffix = t ? ` (target ${t.kcal})` : ''
-    L.push(`## Nutrition — ${avg(m => m.kcal)} kcal/day average${targetSuffix}`)
+    L.push(`## Nutrition: ${avg(m => m.kcal)} kcal/day average${targetSuffix}`)
     L.push(`- Protein ${avg(m => m.protein)} g · carbs ${avg(m => m.carbs)} g · fat ${avg(m => m.fat)} g per day`)
     if (t) {
       const proteinHit = foodDays.filter(m => m.protein >= t.protein).length
@@ -355,7 +355,7 @@ export function buildWeeklyDigest(): string {
       const avgQ = qualities.reduce((a, q) => a + q, 0) / qualities.length
       parts.push(`rested ${avgQ.toFixed(1)}/5`)
     }
-    L.push(`## Sleep — ${parts.join(' · ')}`)
+    L.push(`## Sleep: ${parts.join(' · ')}`)
     L.push('')
   }
 
@@ -366,7 +366,7 @@ export function buildWeeklyDigest(): string {
     const latest = ms.at(-1)!
     const prev = ms.length > 1 ? ms[ms.length - 2] : null
     const d = (cur: number, was?: number) => (was == null ? '' : ` (${cur - was >= 0 ? '+' : ''}${(cur - was).toFixed(1)})`)
-    L.push('## Body — latest measurement ' + format(parseKey(latest.date), 'MMM d'))
+    L.push('## Body: latest measurement ' + format(parseKey(latest.date), 'MMM d'))
     L.push(`- Weight: ${latest.weight} kg${d(latest.weight, prev?.weight)}`)
     L.push(`- Body fat: ${latest.bodyFat}%${d(latest.bodyFat, prev?.bodyFat)}`)
     L.push(`- Muscle: ${latest.muscleMass} kg${d(latest.muscleMass, prev?.muscleMass)}`)
@@ -385,7 +385,7 @@ export function buildWeeklyDigest(): string {
     L.push('## Medicines')
     for (const m of meds) {
       const a = adherence(m.schedule, checks, m.id, days, m.startedOn)
-      const label = `${m.name}${m.dose ? ` ${m.dose}` : ''} — ${scheduleLabel(m.schedule)}`
+      const label = `${m.name}${m.dose ? ` ${m.dose}` : ''}: ${scheduleLabel(m.schedule)}`
       L.push(a.expected > 0
         ? `- ${label}: ${a.taken}/${a.expected} taken`
         : `- ${label}: as needed`)
@@ -432,7 +432,7 @@ function servingLabel(foodId: string, servingId: string | undefined): string {
   return foodById(foodId)?.servings.find(s => s.id === servingId)?.label ?? 'serving'
 }
 
-// One row per thing eaten, plus that day's totals and targets on every row —
+// One row per thing eaten, plus that day's totals and targets on every row,
 // so the file is useful opened in a spreadsheet without a pivot table.
 export function foodToCSV(): string {
   const t = targets()

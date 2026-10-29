@@ -27,8 +27,8 @@ export { hashValue }
  *
  * Screens read localStorage once at mount, so a pull that changes local values
  * after the app has mounted reloads the page (immediately if visible, otherwise
- * on return). Pulls happen at startup, on sign-in and on returning to the app —
- * never on the 3-second timer — so a reload is never sprung on someone mid-tap
+ * on return). Pulls happen at startup, on sign-in and on returning to the app,
+ * never on the 3-second timer, so a reload is never sprung on someone mid-tap
  * unless two devices edited the same thing at the same moment.
  */
 
@@ -152,7 +152,7 @@ export function readState(userId: string, store: Store = browserStore): State {
       }
     }
   } catch {
-    // Unreadable state is not worth failing over — start over with a full pull.
+    // Unreadable state is not worth failing over: start over with a full pull.
   }
   return { userId, lastPushAt: null, reconciled: false, cursor: null, keys: {} }
 }
@@ -203,7 +203,7 @@ export function clearSyncState(): void {
 /**
  * Make this device's data the cloud copy on the next sync: local values win
  * every key, and keys this device does not have are deleted from the cloud
- * (recoverably — tombstones keep the old value). Used after a `replace` restore,
+ * (recoverably, tombstones keep the old value). Used after a `replace` restore,
  * whose whole point is that the restored data is the truth.
  */
 export function markThisDeviceAuthoritative(): void {
@@ -262,7 +262,7 @@ export function resolve(entry: Entry | undefined, local: string | null, remote: 
 /**
  * Merge pulled rows into local storage and record them as the new base.
  *
- * In `overwrite` mode local values are left exactly as they are — only the
+ * In `overwrite` mode local values are left exactly as they are: only the
  * versions are learned, so the next push replaces the cloud copy.
  *
  * Returns the keys whose local value changed.

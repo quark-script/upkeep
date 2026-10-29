@@ -20,10 +20,10 @@ interface Props {
 
 const OFF_NOTES: Record<ReturnType<typeof offStatus>, string> = {
   ready: '',
-  offline: 'Offline — searching your foods only.',
+  offline: 'Offline: searching your foods only.',
   throttled: 'Packaged search paused for a minute.',
   // Tier 4 is CORS-blocked from a browser, so there is nothing useful to say
-  // about it during a normal search — the empty-result line already tells the
+  // about it during a normal search: the empty-result line already tells the
   // user what to do next.
   unsupported: '',
 }
@@ -213,7 +213,7 @@ function CreateStep({ initialName, onCreated, onBack }: {
     kcal: n(per100.kcal), protein: n(per100.protein), carbs: n(per100.carbs), fat: n(per100.fat),
   }
   const derived = macros.protein * 4 + macros.carbs * 4 + macros.fat * 9
-  // A hint, never a blocker — packaged labels genuinely disagree sometimes.
+  // A hint, never a blocker: packaged labels genuinely disagree sometimes.
   const mismatch = macros.kcal > 0 && Math.abs(derived - macros.kcal) > Math.max(20, macros.kcal * 0.2)
 
   const field = 'w-full bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3 py-2.5 font-sans text-[14px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors'
@@ -270,7 +270,7 @@ function CreateStep({ initialName, onCreated, onBack }: {
       {mismatch && (
         <p className="flex items-start gap-1.5 font-sans text-[11.5px] text-warn leading-[15px]">
           <AlertTriangle size={12} strokeWidth={1.8} className="shrink-0 mt-0.5" />
-          These don't quite add up — the macros work out to {Math.round(derived)} kcal. Save anyway if the label says otherwise.
+          These don't quite add up: the macros work out to {Math.round(derived)} kcal. Save anyway if the label says otherwise.
         </p>
       )}
 
@@ -329,7 +329,7 @@ export function FoodSheet({ open, slot, editing, onAdd, onClose }: Props) {
     return () => { clearTimeout(t); ctrl.abort() }
   }, [query, local.length])
 
-  // Editing an existing entry skips the search step entirely — the food is
+  // Editing an existing entry skips the search step entirely: the food is
   // already known, only the portion is in question.
   useEffect(() => {
     if (!open) { setQuery(''); setPicked(null); setCreating(false); setOffResults([]); return }
@@ -435,8 +435,8 @@ export function FoodSheet({ open, slot, editing, onAdd, onClose }: Props) {
               {query.trim().length > 0 && local.length === 0 && (
                 <p className="text-center font-sans text-[13px] text-text-dim py-6">
                   {status === 'unsupported'
-                    ? 'Nothing matched. Create it below — it stays in your library.'
-                    : OFF_NOTES[status] || 'Nothing matched. Create it below — it stays in your library.'}
+                    ? 'Nothing matched. Create it below and it stays in your library.'
+                    : OFF_NOTES[status] || 'Nothing matched. Create it below and it stays in your library.'}
                 </p>
               )}
 

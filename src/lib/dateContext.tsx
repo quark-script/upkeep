@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { todayKey } from './date'
 
 interface LogDateValue {
-  activeDate: string                 // yyyy-MM-dd — the day being logged/viewed
+  activeDate: string                 // yyyy-MM-dd, the day being logged/viewed
   setActiveDate: (d: string) => void
   isToday: boolean
 }
@@ -10,7 +10,7 @@ interface LogDateValue {
 const LogDateContext = createContext<LogDateValue | null>(null)
 
 export function LogDateProvider({ children }: { children: ReactNode }) {
-  // Defaults to today; not persisted — a fresh app launch starts on today.
+  // Defaults to today; not persisted: a fresh app launch starts on today.
   const [activeDate, setActiveDate] = useState<string>(todayKey())
   const value: LogDateValue = {
     activeDate,

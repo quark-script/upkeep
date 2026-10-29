@@ -14,7 +14,7 @@ interface Line {
   total: number
 }
 
-// Today's non-training obligations at a glance — the things easiest to forget.
+// Today's non-training obligations at a glance, the things easiest to forget.
 export function RoutineSummary({ date }: { date: string }) {
   const navigate = useNavigate()
   const [meds] = useLocalStorage<Medicine[]>(KEYS.MEDICINES, [])

@@ -62,7 +62,7 @@ export function setFoodPrefs(id: string, patch: Partial<Food>): void {
 /** True when the user has corrected this food's data. */
 export function hasFoodPrefs(id: string): boolean {
   const p = read<Record<string, Partial<Food>>>(KEYS.FOOD_PREFS, {})[id]
-  // `lastUsedAt` is bookkeeping, not an edit — a food that has only been logged
+  // `lastUsedAt` is bookkeeping, not an edit: a food that has only been logged
   // must not read as "edited".
   return !!p && Object.keys(p).some(k => k !== 'lastUsedAt')
 }
@@ -84,8 +84,8 @@ export function recentFoods(days = 30): Food[] {
 }
 
 /**
- * Local search across tiers 1-3 (recent, user foods, seed). Tier 4 —
- * OpenFoodFacts — is deliberately NOT here: it is async, rate limited, and must
+ * Local search across tiers 1-3 (recent, user foods, seed). Tier 4,
+ * OpenFoodFacts, is deliberately NOT here: it is async, rate limited, and must
  * never delay local results. The UI calls it separately and appends.
  */
 export function searchFoods(query: string, limit = 30): Food[] {
@@ -126,7 +126,7 @@ export function searchFoods(query: string, limit = 30): Food[] {
 
 // ─── Macro maths ─────────────────────────────────────────────────────────────
 
-/** Round to one decimal — enough precision to be honest, few enough digits to read. */
+/** Round to one decimal: enough precision to be honest, few enough digits to read. */
 const r1 = (n: number) => Math.round(n * 10) / 10
 
 /**
@@ -163,13 +163,13 @@ export function dayEntries(date: string): FoodEntry[] {
  *
  * Called by whoever writes the day's entries. The day itself is persisted by
  * the component's `useLocalStorage`, which is the project's pattern for every
- * other Daily section and keeps the screen reactive — so this deliberately does
+ * other Daily section and keeps the screen reactive, so this deliberately does
  * NOT write the entries too, rather than having two writers race for one key.
  */
 export function touchFood(id: string): void {
   // Strictly increasing, not just `Date.now()`: two foods logged inside the same
   // millisecond would otherwise tie, and "most recently used" would order them
-  // arbitrarily — which is exactly what happens when someone taps three Recent
+  // arbitrarily, which is exactly what happens when someone taps three Recent
   // tiles in a row.
   const latest = resolveFoods().reduce((max, f) => Math.max(max, f.lastUsedAt ?? 0), 0)
   const at = Math.max(Date.now(), latest + 1)
@@ -218,7 +218,7 @@ export function slotForNow(d = new Date()): MealSlot {
  * Group entries into meals, oldest first within each.
  *
  * Takes the entries rather than reading them, so the day view can pass what its
- * `useLocalStorage` already holds instead of re-reading storage — and so the two
+ * `useLocalStorage` already holds instead of re-reading storage, and so the two
  * cannot disagree, which is what happened when the component grew its own copy
  * of this loop.
  */

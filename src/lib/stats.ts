@@ -80,14 +80,14 @@ export function bestE1RM(ex: ExerciseLog, bodyWeightKg = latestBodyWeightKg()): 
   return vals.length ? Math.max(...vals) : null
 }
 
-// Is `a` the better set? Heavier wins; at equal load, more reps wins — which is
+// Is `a` the better set? Heavier wins; at equal load, more reps wins, which is
 // the only thing that separates timed holds and unloaded bodyweight sets, where
 // every set carries the same weight.
 export function isBetterSet(a: SetEntry, b: SetEntry): boolean {
   return a.weight > b.weight || (a.weight === b.weight && a.reps > b.reps)
 }
 
-// The heaviest completed set — the one a lifter thinks of as "today's top set".
+// The heaviest completed set, the one a lifter thinks of as "today's top set".
 export function topSet(ex: ExerciseLog): SetEntry | null {
   const done = ex.sets.filter(st => st.done)
   if (done.length === 0) return null

@@ -19,7 +19,7 @@ const WINDOW_STEP = 30
 /**
  * One logged entity on one day. A day row is built only from the entities that
  * actually have data, so nothing is ever asserted about an entity you did not
- * touch — logging dinner must not make the day claim anything about training.
+ * touch: logging dinner must not make the day claim anything about training.
  */
 interface Fact {
   entity: 'workout' | 'diet' | 'sleep' | 'meds' | 'skin'
@@ -200,7 +200,7 @@ export default function History() {
                     </p>
                   </div>
                   {/* One chip per entity that has data. An entity you did not log
-                      contributes nothing — no chip, no dash, no "none". */}
+                      contributes nothing: no chip, no dash, no "none". */}
                   <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                     {d.facts.map(f => (
                       <span
@@ -222,7 +222,7 @@ export default function History() {
 
                 {open && (
                   <div className="px-4 pb-4 pt-1 flex flex-col gap-2">
-                    {/* What actually happened — readable without entering edit mode. */}
+                    {/* What actually happened, readable without entering edit mode. */}
                     {d.session && (
                       <div className="rounded-card bg-panel-inset border border-[var(--color-panel-border)] px-3.5 py-3 flex flex-col gap-2">
                         {d.session.note && (

@@ -58,7 +58,7 @@ function Sparkline({ data }: { data: number[] }) {
   )
 }
 
-// Bottom sheet: the full story of one lift — every session, top sets, PRs.
+// Bottom sheet: the full story of one lift: every session, top sets, PRs.
 export function ExerciseHistorySheet({
   name,
   exerciseId,
@@ -116,11 +116,11 @@ export function ExerciseHistorySheet({
                   { label: 'Sessions', value: String(appearances.length) },
                   {
                     label: unit === 'time' ? 'Best hold' : 'Best set',
-                    value: heaviest ? formatSet(heaviest, unit) : '—',
+                    value: heaviest ? formatSet(heaviest, unit) : '-',
                   },
                   {
                     label: 'Est. 1RM',
-                    value: bestEver != null ? `${Math.round(bestEver)} kg` : '—',
+                    value: bestEver != null ? `${Math.round(bestEver)} kg` : '-',
                   },
                 ].map(s => (
                   <div key={s.label} className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-2.5 py-2.5">
@@ -154,7 +154,7 @@ export function ExerciseHistorySheet({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-sans text-[13px] text-text font-medium flex items-center gap-1.5">
-                          {top ? formatSet(top, logUnit(a.log)) : '—'}
+                          {top ? formatSet(top, logUnit(a.log)) : '-'}
                           {a.isPR && <Trophy size={12} strokeWidth={2} className="text-accent shrink-0" />}
                         </p>
                         <p className="font-mono text-[10px] text-text-dim tracking-[0.03em] mt-0.5">

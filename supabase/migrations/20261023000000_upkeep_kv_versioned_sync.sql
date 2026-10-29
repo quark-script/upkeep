@@ -1,7 +1,7 @@
 -- Two-way sync between devices.
 --
 -- Until now each device only pushed, with a plain upsert, so whichever device
--- wrote last silently replaced the other's value — a freshly signed-in phone
+-- wrote last silently replaced the other's value: a freshly signed-in phone
 -- overwrote the real medicines list with its empty starter list.
 --
 -- Every row now carries a version that the server bumps on each write, and

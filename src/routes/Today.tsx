@@ -30,7 +30,7 @@ function greeting() {
 }
 
 function fmtSleepTime(h: number | undefined): string {
-  if (h == null) return '—'
+  if (h == null) return '-'
   const hh = Math.floor(h) % 24
   const mm = Math.round((h - Math.floor(h)) * 60)
   const ampm = hh < 12 ? 'AM' : 'PM'
@@ -363,7 +363,7 @@ export default function Today() {
         <div className="flex-1 min-w-0">
           <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Last night</p>
           <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em] mt-0.5">
-            {sleepHours != null ? `${sleepHours.toFixed(1)}h` : '—'}
+            {sleepHours != null ? `${sleepHours.toFixed(1)}h` : '-'}
           </p>
           <p className="font-mono text-[10px] text-text-dim tracking-[0.04em] mt-0.5">
             PHONE {fmtSleepTime(sleepLast?.phone)}
@@ -395,7 +395,7 @@ export default function Today() {
                   onClick={() => { setDayOverride(type); setShowChange(false) }}
                   className={`w-full px-4 py-3 rounded-card text-left font-sans text-[14px] font-medium border cursor-pointer transition-colors ${dayType === type ? 'bg-[var(--color-accent-soft)] border-accent text-accent' : 'bg-panel-inset border-[var(--color-panel-border)] text-text'}`}
                 >
-                  {type === 'REST' ? 'Rest day' : `${type} — ${type === 'PUSH' ? 'Chest · Shoulders · Triceps' : type === 'PULL' ? 'Back · Biceps · Traps' : 'Quads · Hamstrings · Calves'}`}
+                  {type === 'REST' ? 'Rest day' : `${type} · ${type === 'PUSH' ? 'Chest · Shoulders · Triceps' : type === 'PULL' ? 'Back · Biceps · Traps' : 'Quads · Hamstrings · Calves'}`}
                 </button>
               ))}
               {dayOverride && (

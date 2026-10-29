@@ -45,7 +45,7 @@ export function InstallPrompt() {
       <div className="flex-1 min-w-0">
         <p className="font-sans text-[13px] text-text font-medium">Install Upkeep</p>
         <p className="font-sans text-[12px] text-text-dim leading-[17px] mt-0.5">
-          Add it to your home screen — full screen, works offline.
+          Add it to your home screen: full screen, works offline.
         </p>
       </div>
       <button

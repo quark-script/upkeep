@@ -67,7 +67,7 @@ export default function CloudSync({ onRestore }: { onRestore: (name: string, tex
           <div className="flex items-center gap-2.5">
             <CloudOff size={15} strokeWidth={1.7} className="text-text-dim shrink-0" />
             <p className="font-sans text-[13px] text-text-dim leading-[19px]">
-              Not configured on this build — no cloud keys. Backup files still work.
+              Not configured on this build: no cloud keys. Backup files still work.
             </p>
           </div>
         </Card>
@@ -128,7 +128,7 @@ export default function CloudSync({ onRestore }: { onRestore: (name: string, tex
   }
 
   const subtitle = (() => {
-    if (status.error) return 'Sync failed — will retry'
+    if (status.error) return 'Sync failed, will retry'
     if (status.busy) return 'Backing up…'
     if (status.pending > 0) return `${status.pending} change${status.pending === 1 ? '' : 's'} waiting`
     if (status.lastPushAt) return `Backed up ${formatDistanceToNowStrict(status.lastPushAt)} ago`

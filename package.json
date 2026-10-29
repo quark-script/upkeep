@@ -1,6 +1,8 @@
 {
   "name": "upkeep",
   "version": "0.1.0",
+  "description": "Offline-first tracker for training, food, sleep, medicines and skincare",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {

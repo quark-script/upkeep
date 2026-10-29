@@ -59,7 +59,7 @@ function regionStyle(delta: number | null, waist = false): { fill: string; opaci
 }
 
 function deltaText(delta: number | null, waist = false): { text: string; cls: string } {
-  if (delta == null) return { text: '—', cls: 'text-text-faint' }
+  if (delta == null) return { text: '-', cls: 'text-text-faint' }
   const good = waist ? delta < 0 : delta > 0
   const sign = delta > 0 ? '+' : ''
   const cls = Math.abs(delta) < 0.05 ? 'text-text-dim' : good ? 'text-accent' : 'text-warn'
@@ -170,7 +170,7 @@ export function BodyStory({ ms }: { ms: MeasurementEntry[] }) {
 
       {!has2 && (
         <p className="font-sans text-[12px] text-text-dim text-center mt-3.5 leading-[18px]">
-          Log measurements again in a few weeks — your silhouette fills in as each area grows.
+          Log measurements again in a few weeks. Your silhouette fills in as each area grows.
         </p>
       )}
     </Card>
@@ -302,7 +302,7 @@ const GROUP_ORDER: MuscleGroup[] = ['chest', 'back', 'shoulders', 'arms', 'legs'
 const BALANCE_WEEKS = 4
 
 // Where the work actually went over the last few weeks. Catches the classic
-// drift — chest and arms every session, legs and core quietly skipped.
+// drift: chest and arms every session, legs and core quietly skipped.
 export function MuscleBalance({ sessions }: { sessions: Session[] }) {
   const bw = latestBodyWeightKg()
   const start = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -372,7 +372,7 @@ export function MuscleBalance({ sessions }: { sessions: Session[] }) {
             <span className="text-warn font-medium">{MUSCLE_LABELS[laggard.group]}</span>{' '}
             {laggard.sets === 0
               ? `had no logged sets in ${BALANCE_WEEKS} weeks.`
-              : `is your least-trained group — ${Math.round(laggard.sets)} sets in ${BALANCE_WEEKS} weeks.`}
+              : `is your least-trained group: ${Math.round(laggard.sets)} sets in ${BALANCE_WEEKS} weeks.`}
           </p>
         )}
       </Card>
@@ -504,7 +504,7 @@ export function NutritionSection() {
           </div>
           <p className="font-mono text-[11px] text-text-dim text-right leading-[16px]">
             {t ? `target ${t.kcal}` : 'no target'}
-            <span className="block text-text-faint">weight ——</span>
+            <span className="block text-text-faint">weight ──</span>
           </p>
         </div>
 
@@ -524,7 +524,7 @@ export function NutritionSection() {
         {partialCount > 0 && (
           <p className="font-sans text-[11px] text-text-faint leading-[15px] mt-2">
             {partialCount} faded {partialCount === 1 ? 'day was' : 'days were'} carried over from
-            protein-only logging — those totals are a floor, so they sit outside the average.
+            protein-only logging. Those totals are a floor, so they sit outside the average.
           </p>
         )}
 

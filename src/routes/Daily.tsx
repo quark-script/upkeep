@@ -16,7 +16,7 @@ import { FoodDay } from '../components/FoodDay'
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtTime(h: number | undefined | null): string {
-  if (h == null) return '— : —'
+  if (h == null) return '- : -'
   const hh = Math.floor(h) % 24
   const mm  = Math.round((h - Math.floor(h)) * 60)
   const ampm = hh < 12 ? 'AM' : 'PM'
@@ -67,7 +67,7 @@ const QUALITY_LABELS = ['Wrecked', 'Rough', 'OK', 'Good', 'Fully rested']
 
 function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean; label: string }) {
   const [sleep, setSleep] = useLocalStorage<SleepEntry>(KEYS.sleepDay(date), {})
-  // The night before the one being edited — where a morning wake-up belongs.
+  // The night before the one being edited, where a morning wake-up belongs.
   const prevKey = dateKey(subDays(parseKey(date), 1))
   const [prevSleep, setPrevSleep] = useLocalStorage<SleepEntry>(KEYS.sleepDay(prevKey), {})
 
@@ -132,7 +132,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
           <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Sleep cycle · this week</p>
           <p className="font-serif text-[20px] text-text font-medium tracking-[-0.03em] mt-0.5">
             Avg ·{' '}
-            <span className="font-mono">{avgDur != null ? `${avgDur.toFixed(1)}h` : '—'}</span>
+            <span className="font-mono">{avgDur != null ? `${avgDur.toFixed(1)}h` : '-'}</span>
           </p>
         </div>
         <div className="text-right">
@@ -154,7 +154,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
           >
             <p className="font-mono text-[9px] text-text-dim uppercase tracking-[0.09em]">{s.label}</p>
             <p className="font-mono text-[17px] text-text font-medium tracking-[-0.02em] mt-1">
-              {s.v != null ? fmtTime(s.v) : '—'}
+              {s.v != null ? fmtTime(s.v) : '-'}
             </p>
           </div>
         ))}
@@ -241,7 +241,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
               </div>
 
               <div className="font-mono text-[11px] text-text-dim tracking-[-0.01em] text-right">
-                {d.dur != null ? `${d.dur.toFixed(1)}h` : '—'}
+                {d.dur != null ? `${d.dur.toFixed(1)}h` : '-'}
               </div>
             </div>
           )
@@ -282,7 +282,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
         </div>
       )}
 
-      {/* Day cycle logger — editable times, any order, log later */}
+      {/* Day cycle logger: editable times, any order, log later */}
       <div className="px-[18px] py-4">
         <div className="flex justify-between items-center mb-1">
           <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
@@ -298,7 +298,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
           )}
         </div>
         <p className="font-sans text-[11px] text-text-faint leading-[15px] mb-3">
-          Night of {morningLabel} — "Awake" is the next morning.
+          Night of {morningLabel}. "Awake" is the next morning.
           {thisDuration != null && (
             <span className="text-text-dim"> · <span className="font-mono">{thisDuration.toFixed(1)}h</span> in bed</span>
           )}
@@ -350,7 +350,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
           })}
         </div>
 
-        {/* Quality — the part a clock can't measure */}
+        {/* Quality: the part a clock can't measure */}
         <div className="mt-3.5 pt-3.5 border-t border-[var(--color-divider)]">
           <div className="flex items-center justify-between mb-2">
             <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">How rested</p>

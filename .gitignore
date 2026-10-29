@@ -27,16 +27,9 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Claude Code session files
-.claude/
-
 # TypeScript cache
 *.tsbuildinfo
 
 # Vite cache
 .vite/
 
-# Brainstorm visual companion
-.superpowers/
-# Local Git worktrees
-.worktrees/

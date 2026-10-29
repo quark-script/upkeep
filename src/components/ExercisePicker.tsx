@@ -7,7 +7,7 @@ import { Pill, Btn } from './ui'
 interface Props {
   open: boolean
   type: WorkoutType
-  /** Ids already on the screen — offered as a jump-to rather than hidden. */
+  /** Ids already on the screen, offered as a jump-to rather than hidden. */
   present: Set<string>
   title?: string
   /** `wasExisting` distinguishes "found your lift" from "created a new one". */
@@ -67,7 +67,7 @@ export function ExercisePicker({ open, type, present, title = 'Add exercise', on
               className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3.5 py-3 font-sans text-[15px] text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
             />
             <p className="font-sans text-[12px] text-text-faint leading-[17px]">
-              Saved to your library — it'll be searchable next time, and its history stays with it.
+              Saved to your library. It'll be searchable next time, and its history stays with it.
             </p>
             <div className="flex gap-2">
               <Btn onClick={handleAddCustom} disabled={!newExName.trim()} className="flex-1">Add</Btn>

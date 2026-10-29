@@ -51,7 +51,7 @@ export function migrationFailures(): string[] {
 
 /**
  * Run `fn` at most once per install, keyed by `id`. Snapshots first, and the
- * marker is written only on success — so a failure leaves the migration pending
+ * marker is written only on success, so a failure leaves the migration pending
  * and it is retried on the next load.
  *
  * Nothing is rolled back automatically: `snapshot()` writes a copy and
@@ -140,14 +140,14 @@ export function discardSnapshot(id: string): void {
 
 /**
  * Three months of logs contain the same lift under a fresh random UUID per
- * session — "Preacher curl" appears twelve times with twelve different ids,
+ * session: "Preacher curl" appears twelve times with twelve different ids,
  * because the old custom-add path minted `crypto.randomUUID()` and never
  * persisted the exercise anywhere.
  *
  * This groups those logs by normalised name, adopts a seed id where the catalog
  * (including aliases) recognises the name, mints one stable custom id where it
  * does not, and rewrites every affected log. Logs with no name at all predate
- * name capture and are unrecoverable — they collapse into a single
+ * name capture and are unrecoverable: they collapse into a single
  * "Unknown lift" so they stop polluting the picker.
  *
  * Written in one setItem at the end so a throw leaves sessions untouched.
@@ -188,7 +188,7 @@ export function migrateOrphanExercises(): void {
   const idFor = new Map<string, string>()
   for (const [key, o] of groups) {
     if (key === '__unnamed__') {
-      idFor.set(key, upsertCustom('Unknown lift', { day: [], defaultReps: '—' }).id)
+      idFor.set(key, upsertCustom('Unknown lift', { day: [], defaultReps: '-' }).id)
       continue
     }
     const resolved = upsertCustom(o.name, {
@@ -290,8 +290,8 @@ function slotFromTime(time: string | undefined): MealSlot {
 
 /**
  * Recover a quantity and a food from a free-text custom label. The old UI never
- * collected grams, so users encoded them in the label — "Panner 100g",
- * "Protein bar 17g", "2 eggs" — and `ProteinItem.grams` stayed unset, which is
+ * collected grams, so users encoded them in the label, "Panner 100g",
+ * "Protein bar 17g", "2 eggs", and `ProteinItem.grams` stayed unset, which is
  * why every one of those days scored zero for those items.
  */
 function parseLegacyLabel(label: string): { name: string; qty: number; grams?: number } {
@@ -329,14 +329,14 @@ function legacyProtein(item: ProteinItem, parsedGrams: number | undefined): numb
 }
 
 // `asGrams` records HOW qty should be read, rather than guessing later from its
-// magnitude — "Panner 100g" is 100 grams, "2 eggs" is 2 servings, and no
+// magnitude: "Panner 100g" is 100 grams, "2 eggs" is 2 servings, and no
 // threshold can tell those apart reliably.
 interface Resolved { foodId: string; qty: number; slot: MealSlot; asGrams: boolean }
 
 /**
  * Is a gram figure from a legacy label a plausible portion of the food it
  * matched? "Panner 100g" is a real 100 g of paneer. "Protein bar 17g" is not
- * 17 g of a 60 g bar — on packaging that phrasing means a bar *containing* 17 g
+ * 17 g of a 60 g bar; on packaging that phrasing means a bar *containing* 17 g
  * of protein, and reading it as a weight understates the entry roughly 4x.
  *
  * The test is whether the figure reaches the food's smallest named portion.
@@ -386,7 +386,7 @@ function resolveLegacyItem(item: ProteinItem, defaultSlot?: MealSlot): Resolved 
 /**
  * Three months of protein logging recorded ticked boxes, not food. The grams
  * behind each tick lived in a lookup table, and for user-added items they were
- * never captured at all — so "Panner 100g", "Protein bar 17g" and "2 eggs" each
+ * never captured at all, so "Panner 100g", "Protein bar 17g" and "2 eggs" each
  * scored a flat zero on every day they were ticked.
  *
  * This turns each tick into a real entry with all four macros, matching typed
@@ -457,7 +457,7 @@ export function migrateProteinDays(): void {
     }
     // Written per day rather than in one batch: 46 days of entries in a single
     // value risks the quota, and the `foodDay` check above makes a partial run
-    // resumable — a retry picks up exactly the days that did not land.
+    // resumable: a retry picks up exactly the days that did not land.
     if (out.length) { localStorage.setItem(KEYS.foodDay(date), JSON.stringify(out)); days++ }
   }
 

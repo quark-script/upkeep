@@ -2,7 +2,7 @@
 // can find them all without guessing.
 export const PREFIX = 'upkeep:'
 
-/** The app's previous name — data written before the rename still uses it. */
+/** The app's previous name: data written before the rename still uses it. */
 const LEGACY_PREFIX = 'gainz:'
 
 export const KEYS = {
@@ -53,7 +53,7 @@ export const DAY_PREFIXES = {
  * progress is monotonic: a failure part-way through leaves every key either
  * fully migrated or still under the old name, never both. Doing it key-by-key
  * also keeps peak usage flat, since the copy would otherwise briefly double
- * every value — the most likely way to hit the quota in the first place.
+ * every value, the most likely way to hit the quota in the first place.
  *
  * Anything left behind is picked up on the next load, because the loop skips
  * keys already present under the new prefix.

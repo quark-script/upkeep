@@ -270,7 +270,7 @@ export function MedicinesCard({ date, isToday }: { date: string; isToday: boolea
 
       {active.length === 0 && (
         <p className="font-sans text-[13px] text-text-dim text-center px-6 py-8 leading-[19px]">
-          No medicines yet. Add what you take and how often — Upkeep tracks the rest.
+          No medicines yet. Add what you take and how often, and Upkeep tracks the rest.
         </p>
       )}
 

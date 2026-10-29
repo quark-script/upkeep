@@ -26,7 +26,7 @@ function numInput(
           value={value}
           onChange={e => onChange(e.target.value)}
           inputMode="decimal"
-          placeholder="—"
+          placeholder="-"
           className="flex-1 bg-transparent border-none outline-none font-mono text-[18px] text-text min-w-0"
         />
         <span className="font-mono text-[11px] text-text-faint uppercase shrink-0">{unit}</span>
@@ -35,7 +35,7 @@ function numInput(
   )
 }
 
-// ─── Step 1 — Name ────────────────────────────────────────────────────────────
+// ─── Step 1: Name ────────────────────────────────────────────────────────────
 
 function NameStep({ onNext }: { onNext: (name: string) => void }) {
   const [name, setName] = useState('')
@@ -49,7 +49,7 @@ function NameStep({ onNext }: { onNext: (name: string) => void }) {
           What's your name?
         </h1>
         <p className="font-sans text-[14px] text-text-dim leading-[21px] mb-8">
-          Upkeep is a personal tracker — it'll greet you by name every morning.
+          Upkeep is a personal tracker. It'll greet you by name every morning.
         </p>
 
         <input
@@ -70,7 +70,7 @@ function NameStep({ onNext }: { onNext: (name: string) => void }) {
   )
 }
 
-// ─── Step 2 — Baseline ────────────────────────────────────────────────────────
+// ─── Step 2: Baseline ────────────────────────────────────────────────────────
 
 type BaselineForm = {
   weight: string
@@ -92,7 +92,7 @@ function BaselineStep({ name, onDone }: { name: string; onDone: (m: MeasurementE
     const w = parseFloat(form.weight)
     if (isNaN(w) || w <= 0) return null
     return {
-      // Local-tz key — toISOString() would file the baseline under the wrong day.
+      // Local-tz key: toISOString() would file the baseline under the wrong day.
       date: todayKey(),
       weight:     w,
       bodyFat:    parseFloat(form.bodyFat)    || 0,
@@ -120,7 +120,7 @@ function BaselineStep({ name, onDone }: { name: string; onDone: (m: MeasurementE
           Starting point,<br />{name}.
         </h1>
         <p className="font-sans text-[14px] text-text-dim leading-[21px] mb-6">
-          Log your baseline measurements. Only weight is required — you can fill the rest in later.
+          Log your baseline measurements. Only weight is required. You can fill the rest in later.
         </p>
 
         <div className="flex flex-col gap-5">

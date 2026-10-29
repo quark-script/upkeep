@@ -84,7 +84,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
 
   const t = useMemo(() => targets(), [])
 
-  // Totals come from the entries themselves, never re-derived from the food —
+  // Totals come from the entries themselves, never re-derived from the food,
   // correcting a food's macros must not silently rewrite what was already eaten.
   const total = useMemo(
     () => entries.reduce<Macros>((a, e) => ({
@@ -104,7 +104,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
       ? prev.map(e => (e.id === entry.id ? entry : e))
       : [...prev, entry])
     // Without this the Recent tier stays empty forever and the food sheet opens
-    // on a blank list — the one-tap path the whole feature is built around.
+    // on a blank list, the one-tap path the whole feature is built around.
     touchFood(entry.foodId)
   }
 
@@ -179,7 +179,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
         )}
       </div>
 
-      {/* Meals. An empty slot renders nothing at all — a quiet day should look
+      {/* Meals. An empty slot renders nothing at all: a quiet day should look
           calm, not like four unfinished chores. */}
       {entries.length === 0 ? (
         <p className="px-[18px] py-7 text-center font-sans text-[13px] text-text-dim">

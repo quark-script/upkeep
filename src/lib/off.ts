@@ -1,7 +1,7 @@
 import type { Food, Macros } from './types'
 
 // Full-text search is NOT in the OpenFoodFacts v2 API; it lives in a separate
-// service. See docs/superpowers/specs/2026-08-26-02-nutrition-design.md.
+// service, search-a-licious.
 const SEARCH_URL = 'https://search.openfoodfacts.org/search'
 
 /**
@@ -50,7 +50,7 @@ function offAvailable(): boolean {
   return offStatus() === 'ready'
 }
 
-/** Results are cached for the tab's lifetime — the same query must never cost
+/** Results are cached for the tab's lifetime: the same query must never cost
  *  a second request against a 10/min budget. */
 const cache = new Map<string, Food[]>()
 
@@ -108,8 +108,8 @@ export function mapOffProduct(p: any): Food | null {
 }
 
 /**
- * Tier-4 search. Returns [] rather than throwing for every failure mode —
- * offline, throttled, HTTP error, malformed JSON — because this tier is
+ * Tier-4 search. Returns [] rather than throwing for every failure mode
+ * (offline, throttled, HTTP error, malformed JSON) because this tier is
  * strictly additive to local results and must never break the picker.
  *
  * Callers are responsible for debouncing (500 ms) and for only calling when the

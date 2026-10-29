@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "GainZ"
+project_id = "upkeep"
 
 [api]
 enabled = true
@@ -156,11 +156,11 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "https://gain-z-nine.vercel.app"
+site_url = "env(SITE_URL)"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://gain-z-nine.vercel.app"]
+additional_redirect_urls = ["env(SITE_URL)"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -240,24 +240,22 @@ otp_expiry = 3600
 # Supabase's own email sender cannot be used here: on the free tier it refuses
 # any template override, which is what turns sign-in into a 6-digit code rather
 # than a link. It also caps sending at 2/hour no matter what `[auth.rate_limit]`
-# says — two mistyped codes and the only account is locked out for an hour.
+# says: two mistyped codes and the only account is locked out for an hour.
 #
-# The password is a Resend API key, read from the environment at `config push`
-# time so it never lands in the repo. Keep it in `.env.smtp.local` (gitignored).
+# The password is a Resend API key and the sender an address on a domain verified
+# with that Resend account. Both are read from the environment at `config push`
+# time, so neither lands in the repository (see docs/self-hosting.md).
 [auth.email.smtp]
 enabled = true
 host = "smtp.resend.com"
 port = 465
 user = "resend"
 pass = "env(SUPABASE_AUTH_EMAIL_SMTP_PASS)"
-# Sent from the verified `dhanpulse.in` domain on the Resend account behind that
-# key. Note the coupling: that domain and key are work infra, so rotating the key
-# there silently breaks sign-in here. A personal Resend account would decouple it.
-admin_email = "upkeep@dhanpulse.in"
+admin_email = "env(SMTP_ADMIN_EMAIL)"
 sender_name = "Upkeep"
 
 # The sign-in code email. `signInWithOtp` renders the *magic link* template,
-# and Supabase's stock version of it prints only `{{ .ConfirmationURL }}` — no
+# and Supabase's stock version of it prints only `{{ .ConfirmationURL }}`, with no
 # code anywhere in the message, which is why the app asked for six digits the
 # email never contained. Overriding it to print `{{ .Token }}` is what actually
 # makes this a code flow. Deploy with `supabase config push`.
@@ -396,8 +394,8 @@ allow_dynamic_registration = false
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
-# `per_worker` (default) — enables hot reload during local development.
-# `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
+# `per_worker` (default): enables hot reload during local development.
+# `oneshot`: fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
 policy = "per_worker"
 # Port to attach the Chrome inspector for debugging edge functions.
 inspector_port = 8083

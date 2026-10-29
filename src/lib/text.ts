@@ -2,8 +2,8 @@
  * One normaliser, shared by the exercise library and the food catalog.
  *
  * It lived in both modules and drifted: the exercise side stripped a trailing
- * plural and the food side did not, so "eggs" — the single most-logged word in
- * the real data — matched nothing. Search and every migration that matches a
+ * plural and the food side did not, so "eggs", the single most-logged word in
+ * the real data, matched nothing. Search and every migration that matches a
  * typed label must agree on what counts as the same name.
  *
  * Lowercase, strip punctuation, collapse whitespace. Deliberately does NOT
@@ -21,7 +21,7 @@ export function normaliseName(s: string): string {
 
 /**
  * True when two typed names mean the same thing, ignoring a trailing plural on
- * either side — "2 eggs" and "Egg", "Upright Rows" and "upright row".
+ * either side: "2 eggs" and "Egg", "Upright Rows" and "upright row".
  *
  * A predicate rather than a canonical form because singularising is lossy:
  * "Dips" and "Shrugs" are named plural on purpose, and collapsing them would

@@ -77,7 +77,7 @@ function NumField({
           const parsed = Number(raw)
           if (raw.trim() === '' || !Number.isFinite(parsed)) setRaw(String(value))
         }}
-        // Grows with the value — a fixed width clipped decimals like "72.5".
+        // Grows with the value: a fixed width clipped decimals like "72.5".
         style={{ width: `${Math.max(2.4, raw.length + 0.5)}ch` }}
         className={`bg-transparent border-none outline-none p-0 m-0 font-mono text-[18px] font-medium tracking-[-0.02em] text-left ${done ? 'text-accent' : 'text-text'}`}
       />
@@ -183,7 +183,7 @@ function SetRow({
         </button>
       </div>
 
-      {/* Steppers ride on the set you're about to do — no clutter on the rest. */}
+      {/* Steppers ride on the set you're about to do; no clutter on the rest. */}
       {active && !done && (
         <div className="flex items-center gap-3 pl-[46px] pr-3.5 pb-2.5 -mt-0.5 flex-wrap">
           {!isTime && (
@@ -263,7 +263,7 @@ function ExerciseCard({
   const targetInc = !targetUp ? 0
     : isTime ? sets[0].actR - sets[0].expR
     : +(sets[0].actW - sets[0].expW).toFixed(2)
-  // Both prompts are for a lift you haven't started yet — once a set is logged
+  // Both prompts are for a lift you haven't started yet: once a set is logged
   // the decision is made, and neither has anything left to offer.
   const showBump = !!bump && completedCount === 0
   const showDrift = streak >= SKIP_PROMPT_AFTER && completedCount === 0
@@ -445,7 +445,7 @@ function SummaryOverlay({ data, onDone }: { data: SummaryData; onDone: () => voi
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-2.5">
           {[
-            { icon: Clock,    value: data.manual ? '—' : `${data.durationMin}`, unit: 'MIN'  },
+            { icon: Clock,    value: data.manual ? '-' : `${data.durationMin}`, unit: 'MIN'  },
             { icon: Dumbbell, value: `${Math.round(data.volume).toLocaleString()}`, unit: 'KG' },
             { icon: Trophy,   value: `${data.doneSets}/${data.totalSets}`, unit: 'SETS' },
           ].map(({ icon: Icon, value, unit }) => (
@@ -538,7 +538,7 @@ function loadInitial(date: string, isToday: boolean, sessions: Session[]): InitS
             id: el.exerciseId,
             name: el.name ?? 'Custom exercise',
             defaultSets: el.sets.length || 3,
-            defaultReps: '—',
+            defaultReps: '-',
             category: 'isolation' as const,
             day: [type], optional: true,
             unit: el.unit ?? 'kg',
@@ -580,7 +580,7 @@ function WorkoutForDate({ date }: { date: string }) {
   const isToday = date === todayKey()
   const mode: 'live' | 'manual' = isToday ? 'live' : 'manual'
 
-  // Lazy initialiser, not useRef(loadInitial(...)) — that form re-runs the whole
+  // Lazy initialiser, not useRef(loadInitial(...)): that form re-runs the whole
   // draft parse and history scan on every render and discards the result.
   const [init] = useState<InitState>(() => loadInitial(date, isToday, sessions))
 
@@ -613,7 +613,7 @@ function WorkoutForDate({ date }: { date: string }) {
   const bodyWeight = useMemo(() => latestBodyWeightKg(), [])
   const startRef = useRef<number | null>(init.startedAt)
   // Per-type stash so switching workout type (manual entry) doesn't lose what
-  // you already filled — switch back and it's restored.
+  // you already filled; switch back and it's restored.
   const typeStash = useRef<Partial<Record<WorkoutType, { log: LiveLog; added: Exercise[]; notes: Record<string, string>; activeId: string | null }>>>({})
 
   const exercises = useMemo(
@@ -720,7 +720,7 @@ function WorkoutForDate({ date }: { date: string }) {
   const handlePick = (ex: Exercise, wasExisting: boolean) => {
     // Swapping replaces a lift in the day's saved plan, permanently. A lift
     // added ad-hoc this session is not in the plan, so it is swapped in the
-    // session's own list instead — otherwise the row would silently stay put
+    // session's own list instead, otherwise the row would silently stay put
     // while the toast claimed otherwise.
     if (swapFor) {
       const inPlan = planFor(type).some(e => e.id === swapFor)
@@ -858,7 +858,7 @@ function WorkoutForDate({ date }: { date: string }) {
       return {
         name: ex.name,
         sets: done.length,
-        top: top ? formatSet({ weight: top.actW, reps: top.actR, done: true }, unit) : '—',
+        top: top ? formatSet({ weight: top.actW, reps: top.actR, done: true }, unit) : '-',
       }
     }).filter(e => e.sets > 0)
 

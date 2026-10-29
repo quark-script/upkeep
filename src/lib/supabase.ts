@@ -5,7 +5,7 @@ const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 
 /**
  * Cloud backup is optional. Without both env vars the app runs exactly as it
- * always has — local-only — and every cloud code path turns itself off rather
+ * always has, local-only, and every cloud code path turns itself off rather
  * than throwing somewhere deep in a component.
  */
 export const cloudConfigured = Boolean(url && publishableKey)

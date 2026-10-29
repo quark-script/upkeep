@@ -245,7 +245,7 @@ export default function Settings() {
           {[
             { label: 'Sessions',     value: sessionCount },
             { label: 'Measurements', value: measurementCount },
-            { label: 'Since',        value: firstDate ?? '—' },
+            { label: 'Since',        value: firstDate ?? '-' },
           ].map(({ label, value }) => (
             <div key={label} className="bg-panel border border-[var(--color-panel-border)] rounded-card-lg p-3.5 text-center">
               <p className="font-mono text-[22px] font-medium text-text tracking-[-0.03em]">{value}</p>
@@ -294,7 +294,7 @@ export default function Settings() {
                     A data update didn't finish
                   </p>
                   <p className="font-sans text-[12.5px] text-text-dim leading-[17px] mt-1">
-                    Some of your older records may still look wrong. Nothing was lost — the app
+                    Some of your older records may still look wrong. Nothing was lost: the app
                     will try again next time you open it. Download a backup first if you plan to
                     keep using it today.
                   </p>
@@ -349,7 +349,7 @@ export default function Settings() {
             </Card>
             <p className="font-sans text-[11.5px] text-text-faint leading-[16px] px-1 mt-2">
               Saved automatically before the app reorganised your old records. Delete them once
-              everything looks right — they take up real space.
+              everything looks right. They take up real space.
             </p>
           </div>
         )}
@@ -383,7 +383,7 @@ export default function Settings() {
           />
           {!backupAt && sessions.length > 0 && (
             <p className="font-sans text-[12px] text-warn leading-[17px] px-1 mt-2">
-              Everything lives in this browser's storage. Clearing site data wipes it — keep a backup file.
+              Everything lives in this browser's storage. Clearing site data wipes it, so keep a backup file.
             </p>
           )}
         </div>
@@ -395,7 +395,7 @@ export default function Settings() {
             <RowItem
               icon={ClipboardList}
               label={digestDone ? 'Copied to clipboard!' : 'Copy weekly digest'}
-              sub="Last 7 days — for your human or AI trainer"
+              sub="Last 7 days, for your human or AI trainer"
               onClick={handleDigest}
             />
           </Card>
@@ -408,14 +408,14 @@ export default function Settings() {
             <RowItem
               icon={FileJson}
               label={exported === 'json' ? 'Downloaded!' : 'Export report (JSON)'}
-              sub="Trainer/AI-readable — names, notes, units"
+              sub="Trainer/AI-readable: names, notes, units"
               onClick={handleExportJSON}
             />
             <Divider />
             <RowItem
               icon={FileText}
               label={exported === 'csv' ? 'Downloaded!' : 'Export as CSV'}
-              sub="Four files — sessions, measurements, sleep, food"
+              sub="Four files: sessions, measurements, sleep, food"
               onClick={handleExportCSV}
             />
           </Card>
@@ -452,14 +452,25 @@ export default function Settings() {
             <div className="flex flex-col gap-2">
               {[
                 ['Stack',    'React 18 · Vite 5 · Tailwind 3'],
-                ['Storage',  'localStorage · no backend'],
-                ['Theme',    'Vault — Graphite + Oxblood'],
+                ['Storage',  'This device · optional cloud sync'],
+                ['Theme',    'Vault: graphite and oxblood'],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between items-baseline">
                   <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.06em]">{k}</span>
                   <span className="font-mono text-[11px] text-text-dim">{v}</span>
                 </div>
               ))}
+              <div className="flex justify-between items-baseline">
+                <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.06em]">Source</span>
+                <a
+                  href="https://github.com/quark-script/upkeep"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[11px] text-accent hover:underline"
+                >
+                  Open source on GitHub
+                </a>
+              </div>
             </div>
           </Card>
         </div>

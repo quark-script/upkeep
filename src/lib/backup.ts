@@ -4,18 +4,18 @@ import { merge3 } from './merge'
 
 const LEGACY_PREFIX = 'gainz:'
 
-// Transient state — never worth carrying between devices or restores.
+// Transient state, never worth carrying between devices or restores.
 //
 // `SYNC_STATE` is load-bearing here: it records which keys this device has
-// already pushed to the cloud. Carrying it onto another device — or restoring
-// it onto a fresh install — would convince that device everything was already
+// already pushed to the cloud. Carrying it onto another device, or restoring
+// it onto a fresh install, would convince that device everything was already
 // uploaded, and it would never seed.
 const SKIP_KEYS = new Set<string>([KEYS.REST_END, KEYS.LAST_BACKUP, KEYS.SYNC_STATE, KEYS.SYNC_OVERWRITE])
 
 // Pre-migration snapshots are a local undo buffer, not portable data: they hold
 // a full copy of everything else in this file, so carrying them would roughly
 // double every backup for no gain on the other device.
-// `KEYS.MIGRATIONS` is deliberately NOT skipped — without it a restore onto a
+// `KEYS.MIGRATIONS` is deliberately NOT skipped: without it a restore onto a
 // fresh install would re-run every migration against already-migrated data.
 const SKIP_PREFIXES = [`${PREFIX}snapshot:`]
 
@@ -111,8 +111,8 @@ function readArray<T>(raw: string | undefined): T[] {
 }
 
 // Restore a backup file.
-//   replace — wipe local data first; the backup becomes the whole truth
-//   merge   — keep everything local, add only what's missing (by session id /
+//   replace: wipe local data first; the backup becomes the whole truth
+//   merge:   keep everything local, add only what's missing (by session id /
 //             measurement date / absent day-key), so nothing already here is lost
 export function restoreBackup(text: string, mode: RestoreMode): RestoreResult {
   const backup = parseBackup(text)

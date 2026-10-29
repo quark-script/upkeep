@@ -72,7 +72,7 @@ function TargetEditor({ initial, onSaved }: {
                 step="1"
                 value={form[key]}
                 onChange={e => setForm(current => ({ ...current, [key]: e.target.value }))}
-                placeholder="—"
+                placeholder="-"
                 aria-label={label}
                 className="w-[92px] bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-2.5 py-2 font-mono text-[15px] text-center text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
               />
@@ -220,7 +220,7 @@ export default function NutritionSettings() {
   const all = useMemo(() => resolveFoods(), [version])
   const review = useMemo(() => resolveFoods().filter(f => f.needsReview), [version])
 
-  // Every food is editable, seed included — a wrong per-100g value would
+  // Every food is editable, seed included: a wrong per-100g value would
   // otherwise silently corrupt every total the app ever shows, with no way to
   // correct it. Yours first, since those are the ones people look for.
   const filtered = useMemo(() => {
@@ -265,7 +265,7 @@ export default function NutritionSettings() {
                     <span className="flex-1 min-w-0">
                       <span className="font-sans text-[14px] text-text font-medium block truncate">{f.name}</span>
                       <span className="font-sans text-[11.5px] text-text-dim block mt-0.5">
-                        Brought over from your old protein log — add its calories.
+                        Brought over from your old protein log. Add its calories.
                       </span>
                     </span>
                   </button>
@@ -342,7 +342,7 @@ export default function NutritionSettings() {
               Delete {confirmDelete.name}?
             </p>
             <p className="font-sans text-[13px] text-text-dim leading-[18px] mt-2">
-              Days you already logged it keep their entries and macros — each one stored its own
+              Days you already logged it keep their entries and macros: each one stored its own
               numbers at the time. You just won't find it in search any more.
             </p>
             <div className="flex gap-2 mt-4">

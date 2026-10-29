@@ -5,7 +5,7 @@ import { dateKey, todayKey, parseKey } from './date'
 import type { DayType, WorkoutType, Session } from './types'
 
 // The planned day type for a date, honouring a manual override if one exists.
-// Single source of truth — Today, Workout and the streak maths all read this.
+// Single source of truth: Today, Workout and the streak maths all read this.
 export function dayTypeFor(key: string): DayType {
   try {
     const raw = localStorage.getItem(KEYS.dayOverride(key))
@@ -17,7 +17,7 @@ export function dayTypeFor(key: string): DayType {
   return SPLIT[parseKey(key).getDay()]
 }
 
-// Same, but never returns REST — used when the user opens a workout on a rest
+// Same, but never returns REST; used when the user opens a workout on a rest
 // day and we still need a sensible set of lifts to show.
 export function workoutTypeFor(key: string): WorkoutType {
   const t = dayTypeFor(key)
@@ -27,7 +27,7 @@ export function workoutTypeFor(key: string): WorkoutType {
 // Consecutive training days hit, walking backwards from today.
 //
 // Today counts the moment it's logged, and an unlogged today does NOT break the
-// streak — the day isn't over yet. Rest days are skipped, not counted.
+// streak: the day isn't over yet. Rest days are skipped, not counted.
 export function calcStreak(sessions: Session[]): number {
   const done = new Set(sessions.filter(s => s.finishedAt).map(s => s.date))
   if (done.size === 0) return 0

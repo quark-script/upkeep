@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { Sun, Dumbbell, TrendingUp, CheckSquare, History, Settings } from 'lucide-react'
 
-// Primary surfaces — shown in the mobile bottom bar (5 = clean max).
+// Primary surfaces, shown in the mobile bottom bar (5 = clean max).
 const TABS = [
   { to: '/today',    label: 'Today',    Icon: Sun },
   { to: '/workout',  label: 'Workout',  Icon: Dumbbell },
