@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Moon, AlertTriangle, ArrowRight, Dumbbell, X, History as HistoryIcon, Settings } from 'lucide-react'
+import { Moon, AlertTriangle, ArrowRight, Dumbbell, X, History as HistoryIcon, Settings, ChevronRight } from 'lucide-react'
 import {
   format, startOfWeek, eachDayOfInterval, endOfWeek,
   isSameDay, isAfter, isBefore, subDays,
@@ -16,7 +16,7 @@ import { sessionVolume } from '../lib/stats'
 import { sleepDurationH } from '../lib/sleep'
 import { useToast } from '../lib/toast'
 import type { Session, MeasurementEntry, SleepEntry, WorkoutType, Profile, FoodEntry } from '../lib/types'
-import { Card, Pill, Stat, SectionLabel, Divider, EmptyState, Btn } from '../components/ui'
+import { Card, Pill, Stat, SectionLabel, Divider, EmptyState } from '../components/ui'
 import { InstallPrompt } from '../components/InstallPrompt'
 import { RoutineSummary } from '../components/RoutineSummary'
 
@@ -29,8 +29,7 @@ function greeting() {
   return 'Good evening'
 }
 
-function fmtSleepTime(h: number | undefined): string {
-  if (h == null) return '-'
+function fmtSleepTime(h: number): string {
   const hh = Math.floor(h) % 24
   const mm = Math.round((h - Math.floor(h)) * 60)
   const ampm = hh < 12 ? 'AM' : 'PM'
@@ -64,11 +63,11 @@ function stalledCompound(sessions: Session[], type: WorkoutType) {
 export default function Today() {
   const navigate = useNavigate()
   const toast = useToast()
-  const [sessions, setSessions] = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
+  const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [profile]      = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
   const [showChange, setShowChange] = useState(false)
-  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [, setDailySection] = useLocalStorage<string>(KEYS.DAILY_SECTION, 'food')
   const [hasTodayDraft] = useState(() => {
     try { return !!localStorage.getItem(KEYS.workoutDraft(todayKey())) } catch { return false }
   })
@@ -136,6 +135,10 @@ export default function Today() {
   }, [toast])
 
   const sleepHours = sleepDurationH(sleepLast ?? {})
+  const sleepDetail = [
+    sleepLast?.phone != null ? `PHONE ${fmtSleepTime(sleepLast.phone)}` : null,
+    sleepLast?.quality != null ? `RESTED ${sleepLast.quality}/5` : null,
+  ].filter(Boolean).join(' · ')
 
   const sleepBedTime = sleepLast?.bed
   const sleepStatus  =
@@ -145,40 +148,6 @@ export default function Today() {
 
   return (
     <div className="pt-6 pb-8 flex flex-col gap-4">
-      {/* ── Delete session confirm ── */}
-      {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center px-4 pt-4 pb-24 md:p-4 md:items-center">
-          <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={() => setDeleteId(null)} />
-          <div className="relative w-full max-w-sm bg-panel border border-[var(--color-panel-border)] rounded-card-lg shadow-card p-6">
-            <p className="font-serif text-[22px] font-medium text-text tracking-[-0.03em] mb-2">Delete session?</p>
-            <p className="font-sans text-[13px] text-text-dim leading-[20px] mb-6">
-              This session will be permanently removed from your history.
-            </p>
-            <div className="flex gap-3">
-              <Btn variant="secondary" onClick={() => setDeleteId(null)} className="flex-1">Cancel</Btn>
-              <button
-                onClick={() => {
-                  const removed = sessions.find(s => s.id === deleteId)
-                  setSessions(prev => prev.filter(s => s.id !== deleteId))
-                  setDeleteId(null)
-                  if (removed) {
-                    toast({
-                      message: `${removed.type} session deleted.`,
-                      actionLabel: 'Undo',
-                      onAction: () => setSessions(prev =>
-                        prev.some(s => s.id === removed.id) ? prev : [...prev, removed],
-                      ),
-                    })
-                  }
-                }}
-                className="flex-1 flex items-center justify-center px-[18px] py-3.5 rounded-card bg-danger text-accent-text font-sans font-semibold text-[13px] uppercase tracking-[0.04em] border-none cursor-pointer transition-all active:scale-[0.98]"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* ── Greeting ── */}
       <div className="flex justify-between items-end">
         <div>
@@ -205,7 +174,7 @@ export default function Today() {
       <Card noPad className="overflow-hidden">
         <div className="px-[18px] pt-[18px] pb-3.5 flex justify-between items-start gap-3">
           <div className="min-w-0">
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.14em]">Today's session</p>
+            <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.14em]">Today's session</p>
             <h2 className="font-serif text-[38px] leading-[40px] text-text font-medium tracking-[-0.06em] mt-1.5 capitalize">
               {isRest ? 'Rest day.' : `${dayType?.toLowerCase()} day.`}
             </h2>
@@ -234,16 +203,28 @@ export default function Today() {
         </div>
       </Card>
 
+      {/* ── Stall alert ── */}
+      {stall && (
+        <Card warnBorder className="flex gap-3 items-start">
+          <AlertTriangle size={16} strokeWidth={1.6} className="text-warn mt-0.5 shrink-0" />
+          <div>
+            <p className="font-sans text-[13px] text-text font-semibold">{stall.name} stalled</p>
+            <p className="font-sans text-[12px] text-text-dim mt-0.5 leading-[17px]">
+              {stall.weight} kg for 3 sessions running. Push harder or check form.
+            </p>
+          </div>
+        </Card>
+      )}
+
       <InstallPrompt />
 
       {/* ── Snapshot ── */}
       <div>
         <SectionLabel right={`WEEK ${format(today, 'w')}`}>Snapshot</SectionLabel>
         <Card>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-5 [&>*:last-child:nth-child(odd)]:col-span-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <Stat label="Body weight" value={bodyWeight != null ? bodyWeight.toFixed(1) : '–'} unit={bodyWeight != null ? 'KG' : ''} />
-            <Stat label="Gym streak"  value={streak} unit={streak !== 1 ? 'DAYS' : 'DAY'} accent />
-            <Stat label="Sessions"    value={`${weekSessionCount}/${TRAINING_DAYS_PER_WEEK}`} unit="WK" />
+            <Stat label="This week"   value={`${weekSessionCount}/${TRAINING_DAYS_PER_WEEK}`} unit="sessions" />
             <Stat
               label="Calories"
               value={eatenToday.kcal}
@@ -261,7 +242,7 @@ export default function Today() {
           <div className="mt-5 flex justify-between">
             {dotStates.map((dot, i) => (
               <div key={i} className="flex flex-col items-center gap-1.5">
-                <span className="font-mono text-[10px] text-text-dim tracking-[0.05em]">{dot.label}</span>
+                <span className="font-mono text-[11px] text-text-dim tracking-[0.05em]">{dot.label}</span>
                 <div
                   className={[
                     'w-[18px] h-[18px] transition-colors',
@@ -281,21 +262,41 @@ export default function Today() {
         </Card>
       </div>
 
-      {/* ── Meds & skincare due today ── */}
+      {/* ── Meds & skincare due today, and last night's sleep ── */}
       <RoutineSummary date={todayStr} />
+      {/* ── Sleep last night ── */}
+      <Card
+        className="flex items-center gap-3.5"
+        onClick={() => { setDailySection('sleep'); navigate('/daily') }}
+      >
+        <div className="w-10 h-10 rounded-card bg-panel-inset border border-[var(--color-panel-border)] flex items-center justify-center shrink-0">
+          <Moon size={18} strokeWidth={1.6} className="text-text-dim" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">Last night</p>
+          {sleepHours != null ? (
+            <>
+              <div className="flex items-center gap-2.5 mt-0.5">
+                <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em]">
+                  {sleepHours.toFixed(1)}h
+                </p>
+                {sleepStatus && (
+                  <Pill color={sleepStatus === 'on target' ? 'success' : sleepStatus === 'late' ? 'warn' : 'danger'}>
+                    {sleepStatus}
+                  </Pill>
+                )}
+              </div>
+              {sleepDetail && (
+                <p className="font-mono text-[11px] text-text-dim tracking-[0.04em] mt-0.5">{sleepDetail}</p>
+              )}
+            </>
+          ) : (
+            <p className="font-sans text-[14px] text-text-dim mt-1">Not logged yet. Tap to add it.</p>
+          )}
+        </div>
+        <ChevronRight size={14} strokeWidth={1.6} className="text-text-faint shrink-0" />
+      </Card>
 
-      {/* ── Stall alert ── */}
-      {stall && (
-        <Card warnBorder className="flex gap-3 items-start">
-          <AlertTriangle size={16} strokeWidth={1.6} className="text-warn mt-0.5 shrink-0" />
-          <div>
-            <p className="font-sans text-[13px] text-text font-semibold">{stall.name} stalled</p>
-            <p className="font-sans text-[12px] text-text-dim mt-0.5 leading-[17px]">
-              {stall.weight} kg for 3 sessions running. Push harder or check form.
-            </p>
-          </div>
-        </Card>
-      )}
 
       {/* ── Recent sessions ── */}
       {sessions.filter(s => s.finishedAt).length === 0 ? (
@@ -308,7 +309,7 @@ export default function Today() {
         </Card>
       ) : recentSessions.length > 0 && (
         <div>
-          <SectionLabel right="LAST 7 DAYS">Recent</SectionLabel>
+          <SectionLabel>Recent</SectionLabel>
           <Card noPad>
             {recentSessions.map((s, i) => {
               const vol = sessionVolume(s)
@@ -330,13 +331,6 @@ export default function Today() {
                       {Math.round(vol).toLocaleString()} KG VOL{dur ? ` · ${dur} MIN` : ''}
                     </p>
                   </div>
-                  <button
-                    onClick={() => setDeleteId(s.id)}
-                    className="ml-3 w-7 h-7 flex items-center justify-center rounded-card bg-transparent border-none cursor-pointer text-text-faint hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
-                    aria-label="Delete session"
-                  >
-                    <X size={13} strokeWidth={1.8} />
-                  </button>
                 </div>
               )
             })}
@@ -351,31 +345,6 @@ export default function Today() {
       >
         <HistoryIcon size={13} strokeWidth={1.8} /> View past days
       </button>
-
-      {/* ── Sleep last night ── */}
-      <Card
-        className="flex items-center gap-3.5"
-        onClick={() => navigate('/daily')}
-      >
-        <div className="w-10 h-10 rounded-card bg-panel-inset border border-[var(--color-panel-border)] flex items-center justify-center shrink-0">
-          <Moon size={18} strokeWidth={1.6} className="text-text-dim" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Last night</p>
-          <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em] mt-0.5">
-            {sleepHours != null ? `${sleepHours.toFixed(1)}h` : '-'}
-          </p>
-          <p className="font-mono text-[10px] text-text-dim tracking-[0.04em] mt-0.5">
-            PHONE {fmtSleepTime(sleepLast?.phone)}
-            {sleepLast?.quality != null && ` · RESTED ${sleepLast.quality}/5`}
-          </p>
-        </div>
-        {sleepStatus && (
-          <Pill color={sleepStatus === 'on target' ? 'success' : sleepStatus === 'late' ? 'warn' : 'danger'}>
-            {sleepStatus}
-          </Pill>
-        )}
-      </Card>
 
       {/* ── Day override modal ── */}
       {showChange && (

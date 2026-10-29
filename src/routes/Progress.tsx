@@ -81,7 +81,7 @@ function Heatmap({ cells }: { cells: HeatmapCell[] }) {
         {weeks.map((_, i) => {
           const m = monthLabels.find(ml => ml.i === i)
           return (
-            <div key={i} className="font-mono text-[9px] text-text-dim uppercase tracking-[0.05em] h-3">
+            <div key={i} className="font-mono text-[10px] text-text-dim uppercase tracking-[0.05em] h-3">
               {m ? m.label : ''}
             </div>
           )
@@ -90,7 +90,7 @@ function Heatmap({ cells }: { cells: HeatmapCell[] }) {
 
       {['S','M','T','W','T','F','S'].map((d, row) => (
         <div key={row} className="grid gap-[3px] mb-[3px]" style={{ gridTemplateColumns: gridCols }}>
-          <div className="font-mono text-[9px] text-text-dim flex items-center">
+          <div className="font-mono text-[10px] text-text-dim flex items-center">
             {row % 2 === 1 ? d : ''}
           </div>
           {weeks.map((wk, i) => {
@@ -161,7 +161,7 @@ type MeasureForm = {
 function numField(label: string, unit: string, value: string, onChange: (v: string) => void) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">{label}</label>
+      <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.06em]">{label}</label>
       <div className="flex items-center gap-1.5 bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3 py-2.5">
         <input
           type="number"
@@ -169,7 +169,7 @@ function numField(label: string, unit: string, value: string, onChange: (v: stri
           value={value}
           onChange={e => onChange(e.target.value)}
           className="flex-1 bg-transparent border-none outline-none font-mono text-[15px] text-text min-w-0"
-          placeholder="-"
+          placeholder="–"
           inputMode="decimal"
         />
         <span className="font-mono text-[11px] text-text-faint uppercase shrink-0">{unit}</span>
@@ -249,7 +249,7 @@ function LogModal({
         <div className="overflow-y-auto flex-1 px-5 py-4 flex flex-col gap-5">
           {/* Date */}
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">Date</label>
+            <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.06em]">Date</label>
             <input
               type="date"
               value={form.date}
@@ -260,7 +260,7 @@ function LogModal({
 
           {/* Body metrics */}
           <div>
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-3">Body</p>
+            <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mb-3">Body</p>
             <div className="grid grid-cols-3 gap-2.5">
               {numField('Weight',  'kg', form.weight,     set('weight'))}
               {numField('Body fat','%',  form.bodyFat,    set('bodyFat'))}
@@ -270,7 +270,7 @@ function LogModal({
 
           {/* Tape */}
           <div>
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-3">Tape (inches)</p>
+            <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mb-3">Tape (inches)</p>
             <div className="grid grid-cols-3 gap-2.5">
               {numField('Chest',    '″', form.chest,    set('chest'))}
               {numField('Shoulder', '″', form.shoulder, set('shoulder'))}
@@ -293,10 +293,19 @@ function LogModal({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
+type Tab = 'training' | 'body' | 'food'
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'training', label: 'Training' },
+  { key: 'body',     label: 'Body' },
+  { key: 'food',     label: 'Food' },
+]
+
 export default function Progress() {
   const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements, setMeasurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
   const [showLog, setShowLog] = useState(false)
+  const [tab, setTab] = useState<Tab>('training')
 
   const cells   = useMemo(() => buildHeatmap(sessions), [sessions])
   const hits    = cells.filter(c => c.state === 'hit' || c.state === 'today').length
@@ -344,151 +353,178 @@ export default function Progress() {
   return (
     <>
       <div className="pt-6 pb-8 flex flex-col gap-5">
-        <PageTitle kicker="Progress · Last 26 weeks" title="Consistency." />
+        <PageTitle kicker="Last 26 weeks" title="Progress." />
 
-        {/* ── Transformation hero ── */}
-        {measurements.length > 0 && <BodyStory ms={measurements} />}
-
-        {/* ── Strength progression + PRs ── */}
-        <StrengthSection sessions={sessions} />
-
-        <NutritionSection />
-
-        {/* ── Where the work actually went ── */}
-        <MuscleBalance sessions={sessions} />
-
-        {/* ── Streak stats + heatmap ── */}
-        <Card>
-          <div className="grid grid-cols-3 gap-3 mb-5">
-            <Stat label="Streak"   value={streak}              unit="DAYS" accent />
-            <Stat label="This wk"  value={`${weekSessions}/${TRAINING_DAYS_PER_WEEK}`} />
-            <Stat label="This mo"  value={`${monthSessions}/${monthTarget}`}           />
-          </div>
-
-          <Heatmap cells={cells} />
-
-          <Divider className="mt-3.5 mb-3" />
-          <div className="flex gap-4 font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-[2px] bg-accent inline-block" />
-              Hit · {hits}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-[2px] inline-block" style={{ background: 'rgba(176,65,62,0.45)' }} />
-              Missed · {missed}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-[2px] bg-[#1A1A1E] inline-block" />
-              Rest
-            </span>
-          </div>
-        </Card>
-
-        {/* ── Body trends ── */}
-        <div>
-          <SectionLabel right={sortedMs.length > 1 ? `${format(parseKey(sortedMs[0].date), 'MMM')} → ${format(parseKey(sortedMs.at(-1)!.date), 'MMM')}` : ''}>
-            Body
-          </SectionLabel>
-          {measurements.length === 0 ? (
-            <Card>
-              <EmptyState
-                icon={Scale}
-                title="No measurements yet."
-                sub="Log your first entry to start tracking weight and body composition."
-                action={<Btn onClick={() => setShowLog(true)}>+ Log measurements</Btn>}
-              />
-            </Card>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              <Card>
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Weight</p>
-                    <p className="font-mono text-[28px] text-text font-medium tracking-[-0.04em] mt-1">
-                      {latestMs?.weight.toFixed(1) ?? '–'}
-                      <span className="font-sans text-[12px] text-text-dim font-normal ml-1">KG</span>
-                    </p>
-                  </div>
-                  {weightDelta && (
-                    <Pill color={parseFloat(weightDelta) >= 0 ? 'success' : 'warn'}>
-                      {parseFloat(weightDelta) > 0 ? '+' : ''}{weightDelta} KG
-                    </Pill>
-                  )}
-                </div>
-                <MiniChart data={sortedMs.map(m => m.weight)} accent />
-              </Card>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <Card>
-                  <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Body fat</p>
-                  <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em] mt-1">
-                    {latestMs?.bodyFat.toFixed(1) ?? '–'}
-                    <span className="font-sans text-[11px] text-text-dim font-normal ml-0.5">%</span>
-                  </p>
-                  <div className="mt-2">
-                    <MiniChart data={sortedMs.map(m => m.bodyFat)} />
-                  </div>
-                </Card>
-                <Card>
-                  <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Muscle</p>
-                  <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em] mt-1">
-                    {latestMs?.muscleMass.toFixed(1) ?? '–'}
-                    <span className="font-sans text-[11px] text-text-dim font-normal ml-0.5">KG</span>
-                  </p>
-                  <div className="mt-2">
-                    <MiniChart data={sortedMs.map(m => m.muscleMass)} accent />
-                  </div>
-                </Card>
-              </div>
-            </div>
-          )}
+        <div className="grid grid-cols-3 gap-1.5">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={[
+                'py-2 rounded-card border font-sans text-[11px] font-semibold uppercase tracking-[0.06em] cursor-pointer transition-colors',
+                t.key === tab
+                  ? 'bg-[var(--color-accent-soft)] border-accent text-accent'
+                  : 'bg-panel-inset border-[var(--color-panel-border)] text-text-dim',
+              ].join(' ')}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
-        {/* ── Tape table ── */}
-        {tape3.length > 0 && (
-          <div>
-            <SectionLabel right={tapeMonths.join(' · ')}>Tape</SectionLabel>
-            <Card noPad>
-              <div
-                className="grid px-3.5 py-2.5 border-b border-[var(--color-divider)] font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]"
-                style={{ gridTemplateColumns: '1fr auto auto auto', columnGap: 14 }}
-              >
-                <span>Site</span>
-                {tapeMonths.map(m => <span key={m}>{m}</span>)}
-                {tapeMonths.length < 3 && Array.from({ length: 3 - tapeMonths.length }).map((_, i) => <span key={i} />)}
+        {tab === 'training' && (
+          <>
+            {/* ── Streak stats + heatmap ── */}
+            <Card>
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                <Stat label="Streak"   value={streak}              unit="DAYS" accent />
+                <Stat label="This wk"  value={`${weekSessions}/${TRAINING_DAYS_PER_WEEK}`} />
+                <Stat label="This mo"  value={`${monthSessions}/${monthTarget}`}           />
               </div>
 
-              {TAPE_ROWS.map(({ label, key, waist }, i) => {
-                const vals = tape3.map(m => m.measurements[key])
-                const delta = vals.length > 1 ? vals.at(-1)! - vals[0] : 0
-                const positive = waist ? delta < 0 : delta > 0
+              <Heatmap cells={cells} />
 
-                return (
-                  <div
-                    key={key}
-                    className={`grid px-3.5 py-3 items-baseline ${i < TAPE_ROWS.length - 1 ? 'border-b border-[var(--color-divider)]' : ''}`}
-                    style={{ gridTemplateColumns: '1fr auto auto auto', columnGap: 14 }}
-                  >
-                    <span className="font-serif text-[14px] text-text font-medium">{label}</span>
-                    {tape3.map((m, mi) => (
-                      <span
-                        key={mi}
-                        className={`font-mono text-[13px] tracking-[-0.02em] ${mi === tape3.length - 1 ? (positive ? 'text-accent font-semibold' : 'text-text') : 'text-text-dim'}`}
-                      >
-                        {m.measurements[key]}″
-                      </span>
-                    ))}
-                    {tape3.length < 3 && Array.from({ length: 3 - tape3.length }).map((_, j) => (
-                      <span key={j} className="text-text-faint font-mono text-[13px]">-</span>
-                    ))}
-                  </div>
-                )
-              })}
+              <Divider className="mt-3.5 mb-3" />
+              <div className="flex gap-4 font-mono text-[11px] text-text-dim uppercase tracking-[0.06em]">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-[2px] bg-accent inline-block" />
+                  Hit · {hits}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-[2px] inline-block" style={{ background: 'rgba(176,65,62,0.45)' }} />
+                  Missed · {missed}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-[2px] bg-[#1A1A1E] inline-block" />
+                  Rest
+                </span>
+              </div>
             </Card>
-          </div>
+
+            {/* ── Strength progression + PRs ── */}
+            <StrengthSection sessions={sessions} />
+
+            {/* ── Where the work actually went ── */}
+            <MuscleBalance sessions={sessions} />
+          </>
         )}
 
-        <Btn fullWidth onClick={() => setShowLog(true)}>+ Log new measurements</Btn>
+        {tab === 'food' && <NutritionSection />}
+
+        {tab === 'body' && (
+          <>
+            {/* ── Transformation hero ── */}
+            {measurements.length > 0 && <BodyStory ms={measurements} />}
+
+            {/* ── Body trends ── */}
+            <div>
+              <SectionLabel right={sortedMs.length > 1 ? `${format(parseKey(sortedMs[0].date), 'MMM')} → ${format(parseKey(sortedMs.at(-1)!.date), 'MMM')}` : ''}>
+                Body
+              </SectionLabel>
+              {measurements.length === 0 ? (
+                <Card>
+                  <EmptyState
+                    icon={Scale}
+                    title="No measurements yet."
+                    sub="Log your first entry to start tracking weight and body composition."
+                    action={<Btn onClick={() => setShowLog(true)}>+ Log measurements</Btn>}
+                  />
+                </Card>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <Card>
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">Weight</p>
+                        <p className="font-mono text-[28px] text-text font-medium tracking-[-0.04em] mt-1">
+                          {latestMs?.weight.toFixed(1) ?? '–'}
+                          <span className="font-sans text-[12px] text-text-dim font-normal ml-1">KG</span>
+                        </p>
+                      </div>
+                      {weightDelta && (
+                        <Pill color={parseFloat(weightDelta) >= 0 ? 'success' : 'warn'}>
+                          {parseFloat(weightDelta) > 0 ? '+' : ''}{weightDelta} KG
+                        </Pill>
+                      )}
+                    </div>
+                    <MiniChart data={sortedMs.map(m => m.weight)} accent />
+                  </Card>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <Card>
+                      <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">Body fat</p>
+                      <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em] mt-1">
+                        {latestMs?.bodyFat.toFixed(1) ?? '–'}
+                        <span className="font-sans text-[11px] text-text-dim font-normal ml-0.5">%</span>
+                      </p>
+                      <div className="mt-2">
+                        <MiniChart data={sortedMs.map(m => m.bodyFat)} />
+                      </div>
+                    </Card>
+                    <Card>
+                      <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">Muscle</p>
+                      <p className="font-mono text-[22px] text-text font-medium tracking-[-0.02em] mt-1">
+                        {latestMs?.muscleMass.toFixed(1) ?? '–'}
+                        <span className="font-sans text-[11px] text-text-dim font-normal ml-0.5">KG</span>
+                      </p>
+                      <div className="mt-2">
+                        <MiniChart data={sortedMs.map(m => m.muscleMass)} accent />
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Tape table ── */}
+            {tape3.length > 0 && (
+              <div>
+                <SectionLabel right={tapeMonths.join(' · ')}>Tape</SectionLabel>
+                <Card noPad>
+                  <div
+                    className="grid px-3.5 py-2.5 border-b border-[var(--color-divider)] font-mono text-[11px] text-text-dim uppercase tracking-[0.06em]"
+                    style={{ gridTemplateColumns: '1fr auto auto auto', columnGap: 14 }}
+                  >
+                    <span>Site</span>
+                    {tapeMonths.map(m => <span key={m}>{m}</span>)}
+                    {tapeMonths.length < 3 && Array.from({ length: 3 - tapeMonths.length }).map((_, i) => <span key={i} />)}
+                  </div>
+
+                  {TAPE_ROWS.map(({ label, key, waist }, i) => {
+                    const vals = tape3.map(m => m.measurements[key])
+                    const delta = vals.length > 1 ? vals.at(-1)! - vals[0] : 0
+                    const positive = waist ? delta < 0 : delta > 0
+
+                    return (
+                      <div
+                        key={key}
+                        className={`grid px-3.5 py-3 items-baseline ${i < TAPE_ROWS.length - 1 ? 'border-b border-[var(--color-divider)]' : ''}`}
+                        style={{ gridTemplateColumns: '1fr auto auto auto', columnGap: 14 }}
+                      >
+                        <span className="font-serif text-[14px] text-text font-medium">{label}</span>
+                        {tape3.map((m, mi) => (
+                          <span
+                            key={mi}
+                            className={`font-mono text-[13px] tracking-[-0.02em] ${mi === tape3.length - 1 ? (positive ? 'text-accent font-semibold' : 'text-text') : 'text-text-dim'}`}
+                          >
+                            {m.measurements[key]}″
+                          </span>
+                        ))}
+                        {tape3.length < 3 && Array.from({ length: 3 - tape3.length }).map((_, j) => (
+                          <span key={j} className="text-text-faint font-mono text-[13px]">–</span>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </Card>
+              </div>
+            )}
+
+            {measurements.length > 0 && (
+              <Btn fullWidth onClick={() => setShowLog(true)}>+ Log new measurements</Btn>
+            )}
+          </>
+        )}
       </div>
 
       {showLog && (

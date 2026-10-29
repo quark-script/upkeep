@@ -7,14 +7,15 @@ import {
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { KEYS, PREFIX } from '../lib/storage'
-import { PageTitle, Card, Divider, Btn } from '../components/ui'
+import { PageTitle, Card, Divider, Btn, SectionLabel } from '../components/ui'
+import { GitHubMark } from '../components/Navigation'
 import { reportToJSON, sessionsToCSV, measurementsToCSV, sleepToCSV, foodToCSV, buildWeeklyDigest } from '../lib/export'
 import { backupToJSON, markBackedUp, lastBackupAt, restoreBackup, type RestoreMode } from '../lib/backup'
 import { snapshots, restoreSnapshot, discardSnapshot, migrationFailures, type SnapshotInfo } from '../lib/migrations'
 import { useToast } from '../lib/toast'
 import CloudSync from '../components/CloudSync'
 import { markThisDeviceAuthoritative, signOutCloud } from '../lib/sync'
-import type { Session, MeasurementEntry } from '../lib/types'
+import type { Session, MeasurementEntry, Profile } from '../lib/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,8 @@ export default function Settings() {
   const toast = useToast()
   const [sessions]     = useLocalStorage<Session[]>(KEYS.SESSIONS, [])
   const [measurements] = useLocalStorage<MeasurementEntry[]>(KEYS.MEASUREMENTS, [])
+  const [profile, setProfile] = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
+  const [nameDraft, setNameDraft] = useState(profile?.name ?? '')
   const [showReset, setShowReset] = useState(false)
   const navigate = useNavigate()
   const [snaps, setSnaps] = useState<SnapshotInfo[]>(() => snapshots())
@@ -148,6 +151,15 @@ export default function Settings() {
   const [pending, setPending] = useState<{ name: string; text: string } | null>(null)
   const [backupAt, setBackupAt] = useState<number | null>(() => lastBackupAt())
   const fileRef = useRef<HTMLInputElement>(null)
+
+  function saveName() {
+    const name = nameDraft.trim()
+    if (!name) { setNameDraft(profile?.name ?? ''); return }
+    if (name === profile?.name) return
+    setProfile({ ...(profile ?? {}), name })
+    setNameDraft(name)
+    toast({ message: 'Name saved.' })
+  }
 
   function handleBackup() {
     downloadFile(backupToJSON(), `upkeep-backup-${format(new Date(), 'yyyy-MM-dd')}.json`, 'application/json')
@@ -238,27 +250,40 @@ export default function Settings() {
   return (
     <>
       <div className="pt-6 pb-8 flex flex-col gap-5">
-        <PageTitle kicker="Settings" title="Data & App." />
+        <PageTitle kicker="Profile, data and sync" title="Settings." />
 
-        {/* ── Summary stats ── */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {[
-            { label: 'Sessions',     value: sessionCount },
-            { label: 'Measurements', value: measurementCount },
-            { label: 'Since',        value: firstDate ?? '-' },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-panel border border-[var(--color-panel-border)] rounded-card-lg p-3.5 text-center">
-              <p className="font-mono text-[22px] font-medium text-text tracking-[-0.03em]">{value}</p>
-              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em] mt-1">{label}</p>
+        {/* ── Profile ── */}
+        <div>
+          <SectionLabel>Profile</SectionLabel>
+          <Card>
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-pill bg-[var(--color-accent-soft)] flex items-center justify-center shrink-0 font-mono text-[13px] text-accent font-semibold">
+                {(profile?.name || 'UK').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <label htmlFor="profile-name" className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Name</label>
+                <input
+                  id="profile-name"
+                  value={nameDraft}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onBlur={saveName}
+                  onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
+                  placeholder="Your first name"
+                  className="w-full bg-transparent border-none outline-none font-serif text-[18px] text-text p-0 mt-0.5 placeholder:text-text-faint"
+                />
+              </div>
             </div>
-          ))}
+            <Divider className="my-3.5" />
+            <p className="font-mono text-[11px] text-text-dim tracking-[0.02em]">
+              {sessionCount} session{sessionCount === 1 ? '' : 's'} · {measurementCount} measurement{measurementCount === 1 ? '' : 's'}
+              {firstDate ? ` · since ${firstDate}` : ''}
+            </p>
+          </Card>
         </div>
 
-        {/* ── Training ── */}
+        {/* ── Tracking ── */}
         <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
-            Training
-          </p>
+          <SectionLabel>Tracking</SectionLabel>
           <Card noPad>
             <RowItem
               icon={Dumbbell}
@@ -276,14 +301,9 @@ export default function Settings() {
           </Card>
         </div>
 
-        {/* ── Cloud backup ── */}
-        <CloudSync onRestore={(name, text) => setPending({ name, text })} />
-
         {failed.length > 0 && (
           <div>
-            <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
-              Attention
-            </p>
+            <SectionLabel>Attention</SectionLabel>
             <Card>
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 bg-warn/10">
@@ -304,12 +324,66 @@ export default function Settings() {
           </div>
         )}
 
+        {/* ── Cloud backup ── */}
+        <CloudSync onRestore={(name, text) => setPending({ name, text })} />
+
+        {/* ── Backup and export ── */}
+        <div>
+          <SectionLabel>Backup and export</SectionLabel>
+          <Card noPad>
+            <RowItem
+              icon={Save}
+              label="Download backup"
+              sub={backupAt ? `Last backup ${formatDistanceToNowStrict(backupAt)} ago` : 'Never backed up'}
+              onClick={handleBackup}
+            />
+            <Divider />
+            <RowItem
+              icon={Upload}
+              label="Restore from backup"
+              sub="Merge into what's here, or replace it"
+              onClick={() => fileRef.current?.click()}
+            />
+            <Divider />
+            <RowItem
+              icon={ClipboardList}
+              label={digestDone ? 'Copied to clipboard!' : 'Copy weekly digest'}
+              sub="Last 7 days in Markdown, for a coach or an AI"
+              onClick={handleDigest}
+            />
+            <Divider />
+            <RowItem
+              icon={FileJson}
+              label={exported === 'json' ? 'Downloaded!' : 'Export report (JSON)'}
+              sub="Readable by people and AI: names, notes, units"
+              onClick={handleExportJSON}
+            />
+            <Divider />
+            <RowItem
+              icon={FileText}
+              label={exported === 'csv' ? 'Downloaded!' : 'Export as CSV'}
+              sub="Four files: sessions, measurements, sleep, food"
+              onClick={handleExportCSV}
+            />
+          </Card>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={e => { void handleFilePicked(e.target.files?.[0]); e.target.value = '' }}
+          />
+          {!backupAt && sessions.length > 0 && (
+            <p className="font-sans text-[12px] text-warn leading-[17px] px-1 mt-2">
+              Everything lives in this browser's storage. Clearing site data wipes it, so keep a backup file.
+            </p>
+          )}
+        </div>
+
         {/* ── Restore points ── */}
         {snaps.length > 0 && (
           <div>
-            <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
-              Restore points
-            </p>
+            <SectionLabel>Advanced: restore points</SectionLabel>
             <Card noPad>
               {snaps.map((snap, i) => (
                 <div key={snap.id}>
@@ -354,76 +428,36 @@ export default function Settings() {
           </div>
         )}
 
-        {/* ── Backup ── */}
+        {/* ── About ── */}
         <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">
-            Backup
-          </p>
-          <Card noPad>
-            <RowItem
-              icon={Save}
-              label="Download backup"
-              sub={backupAt ? `Last backup ${formatDistanceToNowStrict(backupAt)} ago` : 'Never backed up'}
-              onClick={handleBackup}
-            />
-            <Divider />
-            <RowItem
-              icon={Upload}
-              label="Restore from backup"
-              sub="Merge into what's here, or replace it"
-              onClick={() => fileRef.current?.click()}
-            />
-          </Card>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={e => { void handleFilePicked(e.target.files?.[0]); e.target.value = '' }}
-          />
-          {!backupAt && sessions.length > 0 && (
-            <p className="font-sans text-[12px] text-warn leading-[17px] px-1 mt-2">
-              Everything lives in this browser's storage. Clearing site data wipes it, so keep a backup file.
-            </p>
-          )}
-        </div>
-
-        {/* ── Share ── */}
-        <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">Share</p>
-          <Card noPad>
-            <RowItem
-              icon={ClipboardList}
-              label={digestDone ? 'Copied to clipboard!' : 'Copy weekly digest'}
-              sub="Last 7 days, for your human or AI trainer"
-              onClick={handleDigest}
-            />
-          </Card>
-        </div>
-
-        {/* ── Export ── */}
-        <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">Export</p>
-          <Card noPad>
-            <RowItem
-              icon={FileJson}
-              label={exported === 'json' ? 'Downloaded!' : 'Export report (JSON)'}
-              sub="Trainer/AI-readable: names, notes, units"
-              onClick={handleExportJSON}
-            />
-            <Divider />
-            <RowItem
-              icon={FileText}
-              label={exported === 'csv' ? 'Downloaded!' : 'Export as CSV'}
-              sub="Four files: sessions, measurements, sleep, food"
-              onClick={handleExportCSV}
-            />
+          <SectionLabel>About</SectionLabel>
+          <Card>
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-[12px] bg-accent flex items-center justify-center shrink-0">
+                <span className="font-mono font-bold text-[13px] text-accent-text leading-none">UK</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-serif text-[16px] text-text font-medium tracking-[-0.02em]">Upkeep</p>
+                <p className="font-mono text-[11px] text-text-dim tracking-[0.02em] mt-0.5">v0.1.0 · Works offline · AGPL-3.0</p>
+              </div>
+            </div>
+            <Divider className="my-3.5" />
+            <a
+              href="https://github.com/quark-script/upkeep"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2.5 font-sans text-[14px] text-text hover:text-accent transition-colors"
+            >
+              <GitHubMark size={16} />
+              <span className="flex-1">Open source on GitHub</span>
+              <ChevronRight size={14} strokeWidth={1.6} className="text-text-faint" />
+            </a>
           </Card>
         </div>
 
         {/* ── Danger ── */}
         <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">Danger zone</p>
+          <SectionLabel>Danger zone</SectionLabel>
           <Card noPad>
             <RowItem
               icon={Trash2}
@@ -432,46 +466,6 @@ export default function Settings() {
               onClick={() => setShowReset(true)}
               danger
             />
-          </Card>
-        </div>
-
-        {/* ── About ── */}
-        <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.12em] text-text-dim font-medium px-1 mb-2.5">About</p>
-          <Card>
-            <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-[12px] bg-accent flex items-center justify-center shrink-0">
-                <span className="font-mono font-bold text-[13px] text-accent-text leading-none">UK</span>
-              </div>
-              <div>
-                <p className="font-serif text-[16px] text-text font-medium tracking-[-0.02em]">Upkeep</p>
-                <p className="font-mono text-[11px] text-text-dim tracking-[0.02em] mt-0.5">v0.1.0 · Offline · PWA</p>
-              </div>
-            </div>
-            <Divider className="my-3.5" />
-            <div className="flex flex-col gap-2">
-              {[
-                ['Stack',    'React 18 · Vite 5 · Tailwind 3'],
-                ['Storage',  'This device · optional cloud sync'],
-                ['Theme',    'Vault: graphite and oxblood'],
-              ].map(([k, v]) => (
-                <div key={k} className="flex justify-between items-baseline">
-                  <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.06em]">{k}</span>
-                  <span className="font-mono text-[11px] text-text-dim">{v}</span>
-                </div>
-              ))}
-              <div className="flex justify-between items-baseline">
-                <span className="font-mono text-[10px] text-text-faint uppercase tracking-[0.06em]">Source</span>
-                <a
-                  href="https://github.com/quark-script/upkeep"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-[11px] text-accent hover:underline"
-                >
-                  Open source on GitHub
-                </a>
-              </div>
-            </div>
           </Card>
         </div>
       </div>

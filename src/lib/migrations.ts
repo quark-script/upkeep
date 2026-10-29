@@ -188,7 +188,7 @@ export function migrateOrphanExercises(): void {
   const idFor = new Map<string, string>()
   for (const [key, o] of groups) {
     if (key === '__unnamed__') {
-      idFor.set(key, upsertCustom('Unknown lift', { day: [], defaultReps: '-' }).id)
+      idFor.set(key, upsertCustom('Unknown lift', { day: [], defaultReps: '–' }).id)
       continue
     }
     const resolved = upsertCustom(o.name, {

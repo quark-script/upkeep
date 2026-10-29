@@ -59,7 +59,7 @@ function regionStyle(delta: number | null, waist = false): { fill: string; opaci
 }
 
 function deltaText(delta: number | null, waist = false): { text: string; cls: string } {
-  if (delta == null) return { text: '-', cls: 'text-text-faint' }
+  if (delta == null) return { text: '–', cls: 'text-text-faint' }
   const good = waist ? delta < 0 : delta > 0
   const sign = delta > 0 ? '+' : ''
   const cls = Math.abs(delta) < 0.05 ? 'text-text-dim' : good ? 'text-accent' : 'text-warn'
@@ -95,7 +95,7 @@ export function BodyStory({ ms }: { ms: MeasurementEntry[] }) {
     <Card>
       <div className="flex items-center justify-between mb-3">
         <div>
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Your transformation</p>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">Your transformation</p>
           <p className="font-serif text-[22px] text-text font-medium tracking-[-0.03em] mt-0.5">
             {has2 ? `${weeks} ${weeks === 1 ? 'week' : 'weeks'} in.` : 'Your starting point.'}
           </p>
@@ -263,7 +263,7 @@ export function StrengthSection({ sessions }: { sessions: Session[] }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-sans text-[13px] text-text font-medium truncate">{pr.name}</p>
-                    <p className="font-mono text-[10px] text-text-dim tracking-[0.03em] mt-0.5">
+                    <p className="font-mono text-[11px] text-text-dim tracking-[0.03em] mt-0.5">
                       {format(parseKey(pr.date), 'EEE d MMM')}
                     </p>
                   </div>
@@ -497,7 +497,7 @@ export function NutritionSection() {
       <Card>
         <div className="flex items-baseline justify-between mb-1">
           <div>
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Average day</p>
+            <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">Average day</p>
             <p className="font-serif text-[22px] text-text font-medium tracking-[-0.03em] mt-0.5">
               {logged.length > 0 ? `${avg(m => m.kcal)} kcal` : 'Nothing logged yet'}
             </p>
@@ -516,7 +516,7 @@ export function NutritionSection() {
           weights={weights}
         />
 
-        <p className="font-mono text-[9px] text-text-faint uppercase tracking-[0.08em] flex justify-between mt-1">
+        <p className="font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] flex justify-between mt-1">
           <span>{format(parseKey(days[0]), 'MMM d')}</span>
           <span>{format(parseKey(days.at(-1)!), 'MMM d')}</span>
         </p>
@@ -533,7 +533,7 @@ export function NutritionSection() {
         <div className="grid grid-cols-3 gap-3">
           {bars.map(b => (
             <div key={b.label}>
-              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">{b.label}</p>
+              <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.06em]">{b.label}</p>
               <p className="font-mono text-[17px] text-text font-medium tracking-[-0.02em] mt-0.5">
                 {b.value}{b.target !== null && <span className="text-[11px] text-text-dim"> / {b.target} g</span>}
               </p>

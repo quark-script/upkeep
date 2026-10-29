@@ -16,7 +16,7 @@ import { FoodDay } from '../components/FoodDay'
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtTime(h: number | undefined | null): string {
-  if (h == null) return '- : -'
+  if (h == null) return '– : –'
   const hh = Math.floor(h) % 24
   const mm  = Math.round((h - Math.floor(h)) * 60)
   const ampm = hh < 12 ? 'AM' : 'PM'
@@ -129,14 +129,14 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
           <Moon size={18} strokeWidth={1.6} className="text-text" />
         </div>
         <div className="flex-1">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Sleep cycle · this week</p>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">Sleep cycle · this week</p>
           <p className="font-serif text-[20px] text-text font-medium tracking-[-0.03em] mt-0.5">
             Avg ·{' '}
-            <span className="font-mono">{avgDur != null ? `${avgDur.toFixed(1)}h` : '-'}</span>
+            <span className="font-mono">{avgDur != null ? `${avgDur.toFixed(1)}h` : '–'}</span>
           </p>
         </div>
         <div className="text-right">
-          <p className="font-mono text-[9px] text-text-dim uppercase tracking-[0.12em]">Target</p>
+          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">Target</p>
           <p className="font-mono text-[14px] text-accent font-semibold">10:30 PM</p>
         </div>
       </div>
@@ -152,9 +152,9 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
             key={s.label}
             className={`px-3.5 py-3 ${i > 0 ? 'border-l border-[var(--color-divider)]' : ''}`}
           >
-            <p className="font-mono text-[9px] text-text-dim uppercase tracking-[0.09em]">{s.label}</p>
+            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.09em]">{s.label}</p>
             <p className="font-mono text-[17px] text-text font-medium tracking-[-0.02em] mt-1">
-              {s.v != null ? fmtTime(s.v) : '-'}
+              {s.v != null ? fmtTime(s.v) : '–'}
             </p>
           </div>
         ))}
@@ -164,7 +164,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
       <div className="px-3.5 pt-4 pb-2">
         {/* axis labels */}
         <div className="grid mb-1.5 pl-[36px]" style={{ gridTemplateColumns: '1fr' }}>
-          <div className="flex justify-between font-mono text-[9px] text-text-faint uppercase tracking-[0.06em] pr-[60px]">
+          <div className="flex justify-between font-mono text-[10px] text-text-faint uppercase tracking-[0.06em] pr-[60px]">
             <span>10P</span><span>12A</span><span>2A</span><span>4A</span><span>6A</span><span>8A</span>
           </div>
         </div>
@@ -187,7 +187,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
               style={{ gridTemplateColumns: '28px 1fr 52px' }}
             >
               <span
-                className={`font-mono text-[10px] uppercase tracking-[0.06em] ${d.isToday ? 'text-accent font-semibold' : 'text-text-dim'}`}
+                className={`font-mono text-[11px] uppercase tracking-[0.06em] ${d.isToday ? 'text-accent font-semibold' : 'text-text-dim'}`}
               >
                 {d.label}
               </span>
@@ -241,7 +241,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
               </div>
 
               <div className="font-mono text-[11px] text-text-dim tracking-[-0.01em] text-right">
-                {d.dur != null ? `${d.dur.toFixed(1)}h` : '-'}
+                {d.dur != null ? `${d.dur.toFixed(1)}h` : '–'}
               </div>
             </div>
           )
@@ -249,7 +249,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
       </div>
 
       {/* Legend */}
-      <div className="px-[18px] pb-3 flex gap-4 font-mono text-[9px] text-text-faint uppercase tracking-[0.06em]">
+      <div className="px-[18px] pb-3 flex gap-4 font-mono text-[10px] text-text-faint uppercase tracking-[0.06em]">
         <span className="flex items-center gap-1.5">
           <span className="w-[2px] h-3 bg-text-dim inline-block" />Phone away
         </span>
@@ -275,7 +275,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
           </div>
           <button
             onClick={() => setPrevSleep(prev => ({ ...prev, awake: nowFloat() }))}
-            className="shrink-0 px-3 py-2 rounded-card bg-accent text-accent-text font-mono text-[10px] font-semibold uppercase tracking-[0.06em] border-none cursor-pointer"
+            className="shrink-0 px-3 py-2 rounded-card bg-accent text-accent-text font-mono text-[11px] font-semibold uppercase tracking-[0.06em] border-none cursor-pointer"
           >
             Log now
           </button>
@@ -285,13 +285,13 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
       {/* Day cycle logger: editable times, any order, log later */}
       <div className="px-[18px] py-4">
         <div className="flex justify-between items-center mb-1">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">
             {isToday ? 'Tonight · cycle' : `${label} · cycle`}
           </p>
           {anyLogged && (
             <button
               onClick={() => setSleep({})}
-              className="font-mono text-[9px] text-text-faint uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer hover:text-warn transition-colors"
+              className="font-mono text-[10px] text-text-faint uppercase tracking-[0.06em] bg-transparent border-none cursor-pointer hover:text-warn transition-colors"
             >
               Clear
             </button>
@@ -316,7 +316,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
                   on ? 'bg-[var(--color-accent-soft)] border-accent' : 'bg-panel-inset border-[var(--color-panel-border)]',
                 ].join(' ')}
               >
-                <span className={`font-mono text-[10px] uppercase tracking-[0.08em] font-semibold w-[78px] shrink-0 ${on ? 'text-accent' : 'text-text-dim'}`}>
+                <span className={`font-mono text-[11px] uppercase tracking-[0.08em] font-semibold w-[78px] shrink-0 ${on ? 'text-accent' : 'text-text-dim'}`}>
                   {s.label}
                 </span>
                 <input
@@ -330,7 +330,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
                 />
                 <button
                   onClick={() => setStage(s.k, nowFloat())}
-                  className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.06em] text-text-dim hover:text-accent bg-transparent border-none cursor-pointer shrink-0 px-1.5 py-1"
+                  className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.06em] text-text-dim hover:text-accent bg-transparent border-none cursor-pointer shrink-0 px-1.5 py-1"
                 >
                   <Clock size={11} strokeWidth={1.8} /> Now
                 </button>
@@ -353,7 +353,7 @@ function SleepTracker({ date, isToday, label }: { date: string; isToday: boolean
         {/* Quality: the part a clock can't measure */}
         <div className="mt-3.5 pt-3.5 border-t border-[var(--color-divider)]">
           <div className="flex items-center justify-between mb-2">
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em]">How rested</p>
+            <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.1em]">How rested</p>
             {sleep.quality != null && (
               <span className="font-sans text-[11px] text-text-dim">{QUALITY_LABELS[sleep.quality - 1]}</span>
             )}
@@ -429,9 +429,11 @@ export default function Daily() {
       {section === 'meds'  && <MedicinesCard    key={`m-${activeDate}`} date={activeDate} isToday={isToday} />}
       {section === 'skin'  && <SkincareCard     key={`k-${activeDate}`} date={activeDate} isToday={isToday} />}
 
-      <p className="text-center font-mono text-[11px] text-text-faint uppercase tracking-[0.14em]">
-        {isToday ? 'Resets at midnight · local time' : 'Editing a past day'}
-      </p>
+      {!isToday && (
+        <p className="text-center font-mono text-[11px] text-text-dim uppercase tracking-[0.14em]">
+          Editing a past day
+        </p>
+      )}
     </div>
   )
 }

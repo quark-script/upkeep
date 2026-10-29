@@ -72,11 +72,11 @@ function TargetEditor({ initial, onSaved }: {
                 step="1"
                 value={form[key]}
                 onChange={e => setForm(current => ({ ...current, [key]: e.target.value }))}
-                placeholder="-"
+                placeholder="–"
                 aria-label={label}
                 className="w-[92px] bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-2.5 py-2 font-mono text-[15px] text-center text-text outline-none focus:border-accent placeholder:text-text-faint transition-colors"
               />
-              <span className="font-mono text-[10px] text-text-faint uppercase w-[34px]">{unit}</span>
+              <span className="font-mono text-[11px] text-text-faint uppercase w-[34px]">{unit}</span>
             </label>
           ))}
         </div>
@@ -148,7 +148,7 @@ function FoodEditor({ food, onSaved, onClose }: {
         <div className="overflow-y-auto px-5 pb-7 flex flex-col gap-3">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Food name" className={field} />
 
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mt-1">Per 100 g</p>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mt-1">Per 100 g</p>
           <div className="grid grid-cols-4 gap-2">
             {(['kcal', 'protein', 'carbs', 'fat'] as const).map(k => (
               <div key={k}>
@@ -158,7 +158,7 @@ function FoodEditor({ food, onSaved, onClose }: {
                   onChange={e => setPer100(p => ({ ...p, [k]: e.target.value }))}
                   className="w-full bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-2 py-2.5 font-mono text-[14px] text-text text-center outline-none focus:border-accent transition-colors"
                 />
-                <p className="font-mono text-[9px] text-text-dim uppercase tracking-[0.06em] text-center mt-1">{k}</p>
+                <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em] text-center mt-1">{k}</p>
               </div>
             ))}
           </div>
@@ -169,7 +169,7 @@ function FoodEditor({ food, onSaved, onClose }: {
             </p>
           )}
 
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mt-1">Portions</p>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mt-1">Portions</p>
           {servings.map((s, i) => (
             <div key={s.id} className="flex gap-2">
               <input
@@ -241,7 +241,7 @@ export default function NutritionSettings() {
           <ChevronLeft size={13} strokeWidth={2} /> Settings
         </button>
 
-        <PageTitle kicker="Nutrition" title="Targets & foods." />
+        <PageTitle kicker="Settings" title="Nutrition." />
 
         <TargetEditor key={version} initial={t} onSaved={bump} />
 

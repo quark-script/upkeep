@@ -56,7 +56,7 @@ function MacroBar({ label, value, target }: { label: string; value: number; targ
   const hit = target > 0 && value >= target
   return (
     <div>
-      <div className="flex justify-between items-baseline font-mono text-[10px] tracking-[0.06em] mb-1">
+      <div className="flex justify-between items-baseline font-mono text-[11px] tracking-[0.06em] mb-1">
         <span className="text-text-dim uppercase">{label}</span>
         <span className={hit ? 'text-success' : 'text-text-dim'}>
           <span className="text-text">{Math.round(value)}</span>/{target} g
@@ -143,7 +143,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
           <div className="flex items-center gap-4">
             <CalorieRing value={total.kcal} total={t.kcal} />
             <div className="flex-1 min-w-0">
-              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+              <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">
                 {isToday ? 'Food today' : `Food · ${label}`}
               </p>
               <p className="font-serif text-[24px] text-text font-medium tracking-[-0.03em] mt-1">
@@ -159,7 +159,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
         ) : (
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+              <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">
                 {isToday ? 'Food today' : `Food · ${label}`}
               </p>
               <p className="font-serif text-[22px] text-text font-medium tracking-[-0.03em] mt-1">
@@ -189,11 +189,11 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
         MEAL_SLOTS.filter(s => bySlot[s].length > 0).map(slot => (
           <div key={slot}>
             <div className="px-[18px] py-2 bg-panel-inset/40 border-y border-[var(--color-divider)] flex items-center justify-between">
-              <p className="font-mono text-[9px] text-text-faint uppercase tracking-[0.1em]">{SLOT_LABELS[slot]}</p>
+              <p className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">{SLOT_LABELS[slot]}</p>
               <button
                 onClick={() => openSheet(slot)}
                 aria-label={`Add to ${SLOT_LABELS[slot]}`}
-                className="bg-transparent border-none p-0 font-mono text-[9px] text-text-faint uppercase tracking-[0.1em] cursor-pointer hover:text-text-dim transition-colors"
+                className="bg-transparent border-none p-0 font-mono text-[10px] text-text-faint uppercase tracking-[0.1em] cursor-pointer hover:text-text-dim transition-colors"
               >
                 + Add
               </button>
@@ -213,7 +213,7 @@ export function FoodDay({ date, isToday, label }: { date: string; isToday: boole
                 </button>
                 <span className="font-mono text-[11px] text-text-dim tracking-[0.02em] shrink-0 text-right">
                   <span className="text-text">{e.macros.kcal}</span> kcal
-                  <span className="block text-[10px]">{e.macros.protein} g P</span>
+                  <span className="block text-[11px]">{e.macros.protein} g P</span>
                 </span>
                 <button
                   onClick={() => remove(e.id)}

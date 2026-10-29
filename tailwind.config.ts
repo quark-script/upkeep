@@ -11,7 +11,7 @@ const config: Config = {
         'panel-inset': '#1C1C20',
         text: '#EDEAE3',
         'text-dim': '#9A968D',
-        'text-faint': '#5C5851',
+        'text-faint': '#726E66',
         accent: '#B0413E',
         'accent-text': '#EDEAE3',
         success: '#9CB084',

@@ -18,7 +18,7 @@ function numInput(
 ) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em]">{label}</label>
+      <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.06em]">{label}</label>
       <div className="flex items-center gap-2 bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-3.5 py-3">
         <input
           type="number"
@@ -26,7 +26,6 @@ function numInput(
           value={value}
           onChange={e => onChange(e.target.value)}
           inputMode="decimal"
-          placeholder="-"
           className="flex-1 bg-transparent border-none outline-none font-mono text-[18px] text-text min-w-0"
         />
         <span className="font-mono text-[11px] text-text-faint uppercase shrink-0">{unit}</span>
@@ -49,7 +48,7 @@ function NameStep({ onNext }: { onNext: (name: string) => void }) {
           What's your name?
         </h1>
         <p className="font-sans text-[14px] text-text-dim leading-[21px] mb-8">
-          Upkeep is a personal tracker. It'll greet you by name every morning.
+          Everything you log stays on this device. Upkeep just needs a name to greet you by.
         </p>
 
         <input
@@ -125,7 +124,7 @@ function BaselineStep({ name, onDone }: { name: string; onDone: (m: MeasurementE
 
         <div className="flex flex-col gap-5">
           <div>
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-3">Body</p>
+            <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mb-3">Body</p>
             <div className="grid grid-cols-3 gap-2.5">
               {numInput('Weight *', 'kg', form.weight, set('weight'))}
               {numInput('Body fat', '%',  form.bodyFat, set('bodyFat'))}
@@ -134,7 +133,7 @@ function BaselineStep({ name, onDone }: { name: string; onDone: (m: MeasurementE
           </div>
 
           <div>
-            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-3">Tape (inches)</p>
+            <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mb-3">Tape (inches)</p>
             <div className="grid grid-cols-3 gap-2.5">
               {numInput('Chest', '″',  form.chest, set('chest'))}
               {numInput('Waist', '″',  form.waist, set('waist'))}
@@ -144,19 +143,11 @@ function BaselineStep({ name, onDone }: { name: string; onDone: (m: MeasurementE
         </div>
       </div>
 
-      <div className="flex flex-col gap-2.5">
-        {(() => { const entry = buildEntry(); return (
-          <Btn fullWidth onClick={() => onDone(entry)}>
-            {entry ? 'Save & start tracking' : 'Skip for now'}
-          </Btn>
-        )})()}
-        <button
-          onClick={() => onDone(null)}
-          className="w-full py-2.5 bg-transparent border-none font-sans text-[12px] text-text-dim uppercase tracking-[0.06em] cursor-pointer"
-        >
-          Skip baseline
-        </button>
-      </div>
+      {(() => { const entry = buildEntry(); return (
+        <Btn fullWidth onClick={() => onDone(entry)}>
+          {entry ? 'Save and start' : 'Skip for now'}
+        </Btn>
+      )})()}
     </div>
   )
 }

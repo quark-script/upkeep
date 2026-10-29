@@ -53,7 +53,7 @@ function StepEditor({
 
         <div className="overflow-y-auto flex-1 px-5 pb-4 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Product</label>
+            <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Product</label>
             <input
               autoFocus={!onDelete}
               value={draft.label}
@@ -65,7 +65,7 @@ function StepEditor({
 
           <div className="grid grid-cols-2 gap-2.5">
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Brand</label>
+              <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Brand</label>
               <input
                 value={draft.brand ?? ''}
                 onChange={e => set('brand', e.target.value)}
@@ -74,7 +74,7 @@ function StepEditor({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Type</label>
+              <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Type</label>
               <select
                 value={draft.kind ?? 'other'}
                 onChange={e => set('kind', e.target.value as SkinKind)}
@@ -86,7 +86,7 @@ function StepEditor({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Routine</label>
+            <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Routine</label>
             <div className="grid grid-cols-2 gap-1.5">
               {ROUTINES.map(r => (
                 <button
@@ -108,7 +108,7 @@ function StepEditor({
           <ScheduleEditor value={draft.schedule} onChange={s => set('schedule', s)} />
 
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Note</label>
+            <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Note</label>
             <input
               value={draft.note ?? ''}
               onChange={e => set('note', e.target.value)}
@@ -181,11 +181,11 @@ export function SkincareCard({ date, isToday }: { date: string; isToday: boolean
       <div key={routine}>
         <div className="px-[18px] py-2.5 bg-panel-inset/40 border-y border-[var(--color-divider)] flex items-center gap-2">
           <Icon size={13} strokeWidth={1.8} className="text-text-dim shrink-0" />
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.1em] flex-1">{label}</p>
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.1em] flex-1">{label}</p>
           {due.length > 0 && (
             <button
               onClick={() => toggleRoutine(routine, !allDone)}
-              className="font-mono text-[9px] uppercase tracking-[0.08em] bg-transparent border-none cursor-pointer text-text-faint hover:text-accent transition-colors"
+              className="font-mono text-[10px] uppercase tracking-[0.08em] bg-transparent border-none cursor-pointer text-text-faint hover:text-accent transition-colors"
             >
               {allDone ? 'Undo all' : 'Mark all'}
             </button>
@@ -204,7 +204,7 @@ export function SkincareCard({ date, isToday }: { date: string; isToday: boolean
               key={s.id}
               className={[
                 'w-full flex items-center gap-3 px-[18px] transition-colors',
-                on ? 'bg-[var(--color-accent-soft)]' : 'bg-transparent',
+                'bg-transparent',
                 i < mine.length - 1 ? 'border-b border-[var(--color-divider)]' : '',
               ].join(' ')}
             >
@@ -212,7 +212,7 @@ export function SkincareCard({ date, isToday }: { date: string; isToday: boolean
                 onClick={() => setDone(prev => ({ ...prev, [s.id]: !prev[s.id] }))}
                 className="flex-1 min-w-0 flex items-center gap-3 py-3 text-left bg-transparent border-none cursor-pointer"
               >
-                <span className="font-mono text-[10px] text-text-faint w-[14px] shrink-0">{s.order}</span>
+                <span className="font-mono text-[11px] text-text-faint w-[14px] shrink-0">{s.order}</span>
                 <span
                   className={[
                     'w-[22px] h-[22px] rounded-card flex items-center justify-center shrink-0 transition-colors',
@@ -231,7 +231,7 @@ export function SkincareCard({ date, isToday }: { date: string; isToday: boolean
                   <span className={`font-sans text-[13.5px] font-medium block truncate ${on ? 'text-text-dim line-through decoration-text-faint' : scheduledToday ? 'text-text' : 'text-text-dim'}`}>
                     {s.label}
                   </span>
-                  <span className="block font-mono text-[10px] text-text-dim tracking-[0.03em] mt-0.5 truncate">
+                  <span className="block font-mono text-[11px] text-text-dim tracking-[0.03em] mt-0.5 truncate">
                     {s.brand ? `${s.brand} · ` : ''}
                     {scheduledToday ? (s.note ?? scheduleLabel(s.schedule)) : `Not today · ${scheduleLabel(s.schedule)}`}
                   </span>
@@ -265,7 +265,7 @@ export function SkincareCard({ date, isToday }: { date: string; isToday: boolean
           <Sun size={18} strokeWidth={1.6} className="text-text" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">
             {isToday ? 'Skincare today' : 'Skincare'}
           </p>
           <p className="font-serif text-[22px] text-text font-medium tracking-[-0.03em] mt-0.5">

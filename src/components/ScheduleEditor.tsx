@@ -44,7 +44,7 @@ export function ScheduleEditor({
 
   return (
     <div className="flex flex-col gap-2.5">
-      <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Frequency</p>
+      <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Frequency</p>
 
       <div className="grid grid-cols-2 gap-1.5">
         {KINDS.map(k => (

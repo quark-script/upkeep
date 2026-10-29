@@ -45,10 +45,10 @@ function MacroRow({ macros, grams }: { macros: Macros; grams: number }) {
       {cells.map(([label, value]) => (
         <div key={label} className="bg-panel-inset border border-[var(--color-panel-border)] rounded-card py-2 text-center">
           <p className="font-mono text-[15px] text-text font-medium tabular-nums">{value}</p>
-          <p className="font-mono text-[9px] text-text-dim uppercase tracking-[0.08em] mt-0.5">{label}</p>
+          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mt-0.5">{label}</p>
         </div>
       ))}
-      <p className="col-span-4 font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] text-center">
+      <p className="col-span-4 font-mono text-[11px] text-text-faint uppercase tracking-[0.08em] text-center">
         {grams} g total
       </p>
     </div>
@@ -110,7 +110,7 @@ function QuantityStep({ food, initial, defaultSlot, onConfirm, onBack }: {
     <div className="px-5 pb-7 flex flex-col gap-4 overflow-y-auto">
       <button
         onClick={onBack}
-        className="flex items-center gap-1 self-start bg-transparent border-none p-0 font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] cursor-pointer"
+        className="flex items-center gap-1 self-start bg-transparent border-none p-0 font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] cursor-pointer"
       >
         <ChevronLeft size={12} strokeWidth={2} /> Back
       </button>
@@ -123,7 +123,7 @@ function QuantityStep({ food, initial, defaultSlot, onConfirm, onBack }: {
       <MacroRow macros={macros} grams={grams} />
 
       <div>
-        <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-2">Portion</p>
+        <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mb-2">Portion</p>
         <div className="flex flex-wrap gap-1.5">
           {food.servings.map(s => (
             <Chip key={s.id} on={servingId === s.id} onClick={() => chooseServing(s.id)}>
@@ -163,7 +163,7 @@ function QuantityStep({ food, initial, defaultSlot, onConfirm, onBack }: {
       </p>
 
       <div>
-        <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mb-2">Meal</p>
+        <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mb-2">Meal</p>
         <div className="flex flex-wrap gap-1.5">
           {MEAL_SLOTS.map(s => (
             <Chip key={s} on={slot === s} onClick={() => setSlot(s)}>{SLOT_LABELS[s]}</Chip>
@@ -244,7 +244,7 @@ function CreateStep({ initialName, onCreated, onBack }: {
     <div className="px-5 pb-7 flex flex-col gap-3 overflow-y-auto">
       <button
         onClick={onBack}
-        className="flex items-center gap-1 self-start bg-transparent border-none p-0 font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] cursor-pointer"
+        className="flex items-center gap-1 self-start bg-transparent border-none p-0 font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] cursor-pointer"
       >
         <ChevronLeft size={12} strokeWidth={2} /> Back
       </button>
@@ -252,7 +252,7 @@ function CreateStep({ initialName, onCreated, onBack }: {
       <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Food name" className={field} />
       <input value={brand} onChange={e => setBrand(e.target.value)} placeholder="Brand (optional)" className={field} />
 
-      <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mt-1">Per 100 g</p>
+      <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mt-1">Per 100 g</p>
       <div className="grid grid-cols-4 gap-2">
         {(['kcal', 'protein', 'carbs', 'fat'] as const).map(k => (
           <div key={k}>
@@ -263,7 +263,7 @@ function CreateStep({ initialName, onCreated, onBack }: {
               placeholder="0"
               className="w-full bg-panel-inset border border-[var(--color-panel-border)] rounded-card px-2 py-2.5 font-mono text-[14px] text-text text-center outline-none focus:border-accent placeholder:text-text-faint transition-colors"
             />
-            <p className="font-mono text-[9px] text-text-dim uppercase tracking-[0.06em] text-center mt-1">{k}</p>
+            <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.06em] text-center mt-1">{k}</p>
           </div>
         ))}
       </div>
@@ -274,7 +274,7 @@ function CreateStep({ initialName, onCreated, onBack }: {
         </p>
       )}
 
-      <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em] mt-1">Portions</p>
+      <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em] mt-1">Portions</p>
       {servings.map((s, i) => (
         <div key={i} className="flex gap-2">
           <input
@@ -294,7 +294,7 @@ function CreateStep({ initialName, onCreated, onBack }: {
       ))}
       <button
         onClick={() => setServings(v => [...v, { label: '', grams: '' }])}
-        className="self-start bg-transparent border-none p-0 font-mono text-[10px] text-text-dim uppercase tracking-[0.06em] cursor-pointer"
+        className="self-start bg-transparent border-none p-0 font-mono text-[11px] text-text-dim uppercase tracking-[0.06em] cursor-pointer"
       >
         + Another portion
       </button>
@@ -395,7 +395,7 @@ export function FoodSheet({ open, slot, editing, onAdd, onClose }: Props) {
 
               {recent.length > 0 && (
                 <>
-                  <p className="font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] px-2.5 pb-2">Recent</p>
+                  <p className="font-mono text-[11px] text-text-faint uppercase tracking-[0.08em] px-2.5 pb-2">Recent</p>
                   <div className="grid grid-cols-2 gap-2 px-1.5 pb-3">
                     {recent.map(f => (
                       <button
@@ -404,7 +404,7 @@ export function FoodSheet({ open, slot, editing, onAdd, onClose }: Props) {
                         className="px-3 py-2.5 rounded-card bg-panel-inset border border-[var(--color-panel-border)] text-left cursor-pointer hover:border-accent transition-colors"
                       >
                         <span className="font-sans text-[13px] text-text font-medium block truncate">{f.name}</span>
-                        <span className="font-mono text-[10px] text-text-dim block mt-0.5 truncate">
+                        <span className="font-mono text-[11px] text-text-dim block mt-0.5 truncate">
                           {f.servings.find(s => s.id === f.defaultServingId)?.label ?? '100 g'}
                         </span>
                       </button>
@@ -426,7 +426,7 @@ export function FoodSheet({ open, slot, editing, onAdd, onClose }: Props) {
                   </span>
                   {f.needsReview && <Pill color="warn">CHECK</Pill>}
                   {f.source === 'custom' && !f.needsReview && <Pill color="dim">YOURS</Pill>}
-                  <span className="font-mono text-[10px] text-text-dim tracking-[0.04em] shrink-0">
+                  <span className="font-mono text-[11px] text-text-dim tracking-[0.04em] shrink-0">
                     {f.per100.kcal} kcal
                   </span>
                 </button>
@@ -442,7 +442,7 @@ export function FoodSheet({ open, slot, editing, onAdd, onClose }: Props) {
 
               {offResults.length > 0 && (
                 <>
-                  <p className="font-mono text-[10px] text-text-faint uppercase tracking-[0.08em] px-2.5 pt-3 pb-2">
+                  <p className="font-mono text-[11px] text-text-faint uppercase tracking-[0.08em] px-2.5 pt-3 pb-2">
                     Packaged foods
                   </p>
                   {offResults.map(f => (

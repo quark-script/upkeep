@@ -72,7 +72,7 @@ function Field({ label, hint, onReset, children }: {
         {onReset && (
           <button
             onClick={onReset}
-            className="mt-1 bg-transparent border-none p-0 font-mono text-[10px] text-text-faint uppercase tracking-[0.06em] cursor-pointer hover:text-text-dim transition-colors"
+            className="mt-1 bg-transparent border-none p-0 font-mono text-[11px] text-text-faint uppercase tracking-[0.06em] cursor-pointer hover:text-text-dim transition-colors"
           >
             Reset to default
           </button>
@@ -135,7 +135,7 @@ function DayPlanSection({ type, version, onChange }: {
           {lifts.map((ex, i) => (
             <div key={ex.id} className="flex items-center gap-1 px-1.5 py-1.5 rounded-card hover:bg-panel-inset/50 transition-colors">
               <span className="flex-1 min-w-0 font-sans text-[13.5px] text-text truncate">{ex.name}</span>
-              <span className="font-mono text-[10px] text-text-dim shrink-0 mr-1">{ex.defaultSets}×{ex.defaultReps}</span>
+              <span className="font-mono text-[11px] text-text-dim shrink-0 mr-1">{ex.defaultSets}×{ex.defaultReps}</span>
               <button
                 onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up"
                 className="w-11 h-11 flex items-center justify-center rounded-card bg-transparent border-none cursor-pointer text-text-faint hover:text-text disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
@@ -261,7 +261,7 @@ function ExerciseEditor({ ex, onClose, onChange }: {
                 <button
                   key={u.value}
                   onClick={() => update({ unit: u.value })}
-                  className={`px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.04em] border-none cursor-pointer transition-colors ${
+                  className={`px-2.5 py-2 font-mono text-[11px] uppercase tracking-[0.04em] border-none cursor-pointer transition-colors ${
                     unit === u.value ? 'bg-accent text-accent-text' : 'bg-panel-inset text-text-dim'
                   }`}
                 >
@@ -291,7 +291,7 @@ function ExerciseEditor({ ex, onClose, onChange }: {
                 <button
                   key={g}
                   onClick={() => toggleGroup(g)}
-                  className={`px-2 py-[3px] rounded-pill border font-mono text-[10px] uppercase tracking-[0.04em] font-medium cursor-pointer transition-colors ${
+                  className={`px-2 py-[3px] rounded-pill border font-mono text-[11px] uppercase tracking-[0.04em] font-medium cursor-pointer transition-colors ${
                     groups.includes(g)
                       ? 'bg-[var(--color-accent-soft)] border-accent text-accent'
                       : 'bg-transparent border-[var(--color-panel-border)] text-text-dim'
@@ -377,7 +377,7 @@ export default function ExerciseSettings() {
           <ChevronLeft size={13} strokeWidth={2} /> Settings
         </button>
 
-        <PageTitle kicker="Exercises" title="Your library." />
+        <PageTitle kicker="Settings" title="Exercises." />
 
         {drifted.length > 0 && (
           <div>
@@ -454,7 +454,7 @@ export default function ExerciseSettings() {
             <div className="flex flex-col gap-3">
               {grouped.map(([eq, list]) => (
                 <div key={eq}>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint px-1 mb-1.5">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-faint px-1 mb-1.5">
                     {EQUIPMENT_LABELS[eq]} · {list.length}
                   </p>
                   <Card noPad>

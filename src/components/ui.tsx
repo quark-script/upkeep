@@ -111,7 +111,7 @@ interface StatProps {
 export function Stat({ label, value, unit, accent }: StatProps) {
   return (
     <div className="flex flex-col gap-1.5 min-w-0">
-      <span className="font-sans text-[10px] uppercase tracking-[0.08em] text-text-dim">
+      <span className="font-sans text-[11px] uppercase tracking-[0.08em] text-text-dim">
         {label}
       </span>
       <span className={`font-mono text-[30px] leading-[32px] font-medium tracking-[-0.04em] flex items-baseline gap-1 ${accent ? 'text-accent' : 'text-text'}`}>
@@ -176,7 +176,7 @@ export function SectionLabel({ children, right, className = '' }: SectionLabelPr
 
 export function Eyebrow({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <p className={`font-mono text-[10px] uppercase tracking-[0.14em] text-text-dim ${className}`}>
+    <p className={`font-mono text-[11px] uppercase tracking-[0.14em] text-text-dim ${className}`}>
       {children}
     </p>
   )

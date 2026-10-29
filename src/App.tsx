@@ -20,13 +20,13 @@ export default function App() {
   const [profile] = useLocalStorage<Profile | null>(KEYS.PROFILE, null)
   const [boarded, setBoarded] = useState(false)
 
-  const showOnboarding = !profile && !boarded
+  // Onboarding replaces the app rather than covering it, so the screens mount
+  // after it and read the name it saved.
+  if (!profile && !boarded) return <Onboarding onComplete={() => setBoarded(true)} />
 
   return (
     <LogDateProvider>
       <ToastProvider>
-        {showOnboarding && <Onboarding onComplete={() => setBoarded(true)} />}
-
         <div className="flex h-full overflow-hidden bg-vault text-text">
           <Sidebar />
 

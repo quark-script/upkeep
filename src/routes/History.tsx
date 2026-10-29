@@ -192,7 +192,7 @@ export default function History() {
                   className="w-full flex items-center gap-3 px-4 py-3.5 text-left bg-transparent border-none cursor-pointer"
                 >
                   <div className="w-11 shrink-0 text-center">
-                    <p className={`font-mono text-[10px] uppercase tracking-[0.06em] ${isToday ? 'text-accent font-semibold' : 'text-text-dim'}`}>
+                    <p className={`font-mono text-[11px] uppercase tracking-[0.06em] ${isToday ? 'text-accent font-semibold' : 'text-text-dim'}`}>
                       {format(date, 'EEE')}
                     </p>
                     <p className="font-mono text-[18px] text-text font-medium tracking-[-0.02em] leading-tight">

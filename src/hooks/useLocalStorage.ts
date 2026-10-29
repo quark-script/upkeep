@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -10,17 +10,22 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
     }
   })
 
+  // The value as of the last write. Functional updates build on it, so rapid
+  // consecutive writes chain, and the write to storage happens right away: a state
+  // updater only runs on the next render, which never comes for a component that
+  // closes as it saves (onboarding finishing, a sheet closing).
+  const latest = useRef(storedValue)
+
   const setValue = useCallback(
     (value: T | ((val: T) => T)) => {
-      setStoredValue(prev => {
-        const next = value instanceof Function ? value(prev) : value
-        try {
-          localStorage.setItem(key, JSON.stringify(next))
-        } catch (err) {
-          console.warn(`useLocalStorage: failed to write "${key}"`, err)
-        }
-        return next
-      })
+      const next = value instanceof Function ? value(latest.current) : value
+      latest.current = next
+      try {
+        localStorage.setItem(key, JSON.stringify(next))
+      } catch (err) {
+        console.warn(`useLocalStorage: failed to write "${key}"`, err)
+      }
+      setStoredValue(next)
     },
     [key]
   )

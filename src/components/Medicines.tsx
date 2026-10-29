@@ -60,7 +60,7 @@ function MedEditor({
 
         <div className="overflow-y-auto flex-1 px-5 pb-4 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Name</label>
+            <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Name</label>
             <input
               autoFocus={!onDelete}
               value={draft.name}
@@ -72,7 +72,7 @@ function MedEditor({
 
           <div className="grid grid-cols-2 gap-2.5">
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Dose</label>
+              <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Dose</label>
               <input
                 value={draft.dose ?? ''}
                 onChange={e => set('dose', e.target.value)}
@@ -81,7 +81,7 @@ function MedEditor({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Form</label>
+              <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Form</label>
               <select
                 value={draft.form ?? 'tablet'}
                 onChange={e => set('form', e.target.value as MedForm)}
@@ -93,14 +93,14 @@ function MedEditor({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">When</label>
+            <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">When</label>
             <div className="grid grid-cols-5 gap-1.5">
               {SLOT_ORDER.map(s => (
                 <button
                   key={s}
                   onClick={() => set('slot', s)}
                   className={[
-                    'py-2 rounded-card border font-sans text-[10px] font-semibold uppercase tracking-[0.02em] cursor-pointer transition-colors',
+                    'py-2 rounded-card border font-sans text-[11px] font-semibold uppercase tracking-[0.02em] cursor-pointer transition-colors',
                     draft.slot === s
                       ? 'bg-[var(--color-accent-soft)] border-accent text-accent'
                       : 'bg-panel-inset border-[var(--color-panel-border)] text-text-dim',
@@ -115,7 +115,7 @@ function MedEditor({
           <ScheduleEditor value={draft.schedule} onChange={s => set('schedule', s)} />
 
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] text-text-dim uppercase tracking-[0.08em]">Note</label>
+            <label className="font-mono text-[11px] text-text-dim uppercase tracking-[0.08em]">Note</label>
             <input
               value={draft.note ?? ''}
               onChange={e => set('note', e.target.value)}
@@ -192,7 +192,7 @@ export function MedicinesCard({ date, isToday }: { date: string; isToday: boolea
         key={m.id}
         className={[
           'w-full flex items-center gap-3 px-[18px] transition-colors',
-          on ? 'bg-[var(--color-accent-soft)]' : 'bg-transparent',
+          'bg-transparent',
           !isLast ? 'border-b border-[var(--color-divider)]' : '',
         ].join(' ')}
       >
@@ -219,7 +219,7 @@ export function MedicinesCard({ date, isToday }: { date: string; isToday: boolea
               </span>
               {m.dose && <span className="font-mono text-[11px] text-accent shrink-0">{m.dose}</span>}
             </span>
-            <span className="block font-mono text-[10px] text-text-dim tracking-[0.03em] mt-0.5 truncate">
+            <span className="block font-mono text-[11px] text-text-dim tracking-[0.03em] mt-0.5 truncate">
               {due ? scheduleLabel(m.schedule) : nextDueLabel(m.schedule, date) ?? 'As needed'}
               {m.note ? ` · ${m.note}` : ''}
             </span>
@@ -243,7 +243,7 @@ export function MedicinesCard({ date, isToday }: { date: string; isToday: boolea
           <PillIcon size={18} strokeWidth={1.6} className="text-text" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-mono text-[10px] text-text-dim uppercase tracking-[0.12em]">
+          <p className="font-mono text-[11px] text-text-dim uppercase tracking-[0.12em]">
             {isToday ? 'Medicines today' : 'Medicines'}
           </p>
           <p className="font-serif text-[22px] text-text font-medium tracking-[-0.03em] mt-0.5">
@@ -262,7 +262,7 @@ export function MedicinesCard({ date, isToday }: { date: string; isToday: boolea
       {notToday.length > 0 && (
         <>
           <div className="px-[18px] py-2 bg-panel-inset/40 border-y border-[var(--color-divider)]">
-            <p className="font-mono text-[9px] text-text-faint uppercase tracking-[0.1em]">Not scheduled today</p>
+            <p className="font-mono text-[10px] text-text-faint uppercase tracking-[0.1em]">Not scheduled today</p>
           </div>
           {notToday.map((m, i) => row(m, false, i === notToday.length - 1))}
         </>
