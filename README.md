@@ -6,15 +6,16 @@ A personal tracker for training, food, sleep, medicines and skincare. It's an in
 that works offline: everything is saved in the browser, with no account. Signing in backs it up
 and syncs it across your devices, through your own Supabase project.
 
-Live at [gain-z-nine.vercel.app](https://gain-z-nine.vercel.app). It works there without an
+Live at [upkeep.dhanpulse.in](https://upkeep.dhanpulse.in). It works there without an
 account; sign-in on that copy is only for its owner. Built with React, TypeScript, Tailwind CSS
 and [Supabase](https://supabase.com).
 
 ## Features
 
 - **Workouts**: a push, pull and legs week, where you choose each day's lifts and can swap any
-  day. Log sets with steppers, for weighted, bodyweight and timed lifts. Last session's numbers come prefilled, double progression
-  says when to add weight, and stalled lifts and PRs are flagged
+  day. Log sets with steppers, for weighted, bodyweight and timed lifts. Last session's numbers
+  come prefilled, double progression says when to add weight, and stalled lifts and PRs are
+  flagged
 - **Progress**: a 26-week consistency heatmap, body measurements over time, estimated one-rep max
   per lift, PRs and the balance between muscle groups
 - **Food**: calories and macros against targets you set, from a library of common Indian foods and
